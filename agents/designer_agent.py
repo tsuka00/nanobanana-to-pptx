@@ -110,11 +110,8 @@ class DesignerAgent:
                     mime_type="image/png"
                 )
             else:
-                # 画像なし → text_to_image で新規生成
-                result = _text_to_image._tool_func(
-                    prompt=bg["prompt"],
-                    aspect_ratio="16:9"
-                )
+                # 画像なし → text_to_image で新規生成（16:9固定）
+                result = _text_to_image._tool_func(prompt=bg["prompt"])
 
             if result.get("success"):
                 current_image = result["image_base64"]

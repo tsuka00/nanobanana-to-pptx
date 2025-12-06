@@ -21,13 +21,12 @@ def get_client():
 
 
 @tool
-def text_to_image(prompt: str, aspect_ratio: str = "16:9") -> dict:
+def text_to_image(prompt: str) -> dict:
     """
-    テキストプロンプトから新規画像を生成します。
+    テキストプロンプトから新規画像を生成します（16:9固定）。
 
     Args:
         prompt: 画像生成のプロンプト。生成したい画像の内容を詳細に指示します。
-        aspect_ratio: アスペクト比（デフォルト: 16:9）。例: "1:1", "4:3", "16:9", "9:16"
 
     Returns:
         dict: 生成された画像のBase64データを含む辞書
@@ -39,9 +38,10 @@ def text_to_image(prompt: str, aspect_ratio: str = "16:9") -> dict:
     try:
         client = get_client()
 
-        # テキスト生成を禁止するプロンプト
+        # アスペクト比16:9固定 + テキスト生成禁止
         full_prompt = f"""{prompt}
 
+アスペクト比は16:9（横長）で生成してください。
 重要: 画像内にテキストや文字を一切含めないでください。"""
 
         # generate_content でテキストから画像生成

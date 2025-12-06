@@ -76,11 +76,8 @@ def test_text_to_image():
         print("プロンプトが空です。スキップします。")
         return False
 
-    print("\nGemini API を呼び出し中...")
-    result = text_to_image._tool_func(
-        prompt=prompt,
-        aspect_ratio="16:9"
-    )
+    print("\nGemini API を呼び出し中（16:9固定）...")
+    result = text_to_image._tool_func(prompt=prompt)
 
     print(f"\nSuccess: {result.get('success')}")
     if result.get('success'):
