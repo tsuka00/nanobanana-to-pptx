@@ -61,18 +61,15 @@ def test_jp_fonts():
     return result.get('success')
 
 
-def test_nanobanana():
-    """nanobanana ツールをテスト"""
-    print("\n=== nanobanana テスト ===\n")
+def test_text_to_image():
+    """text_to_image ツールをテスト"""
+    print("\n=== text_to_image テスト ===\n")
 
     if not os.environ.get("GOOGLE_API_KEY"):
         print("Error: GOOGLE_API_KEY が設定されていません")
         return False
 
-    from agents.tools.nanobanana import nanobanana
-
-    test_image = create_test_image()
-    print(f"テスト画像を作成: Base64長 = {len(test_image)}")
+    from agents.tools.text_to_image import text_to_image
 
     prompt = input("画像生成プロンプトを入力: ").strip()
     if not prompt:
@@ -80,7 +77,45 @@ def test_nanobanana():
         return False
 
     print("\nGemini API を呼び出し中...")
-    result = nanobanana._tool_func(
+    result = text_to_image._tool_func(
+        prompt=prompt,
+        aspect_ratio="16:9"
+    )
+
+    print(f"\nSuccess: {result.get('success')}")
+    if result.get('success'):
+        print(f"出力画像 Base64長: {len(result.get('image_base64', ''))}")
+        img_data = base64.b64decode(result['image_base64'])
+        output_path = PROJECT_ROOT / 'test_output_text_to_image.png'
+        with open(output_path, 'wb') as f:
+            f.write(img_data)
+        print(f"保存: {output_path}")
+    else:
+        print(f"Error: {result.get('error')}")
+
+    return result.get('success')
+
+
+def test_image_to_image():
+    """image_to_image ツールをテスト"""
+    print("\n=== image_to_image テスト ===\n")
+
+    if not os.environ.get("GOOGLE_API_KEY"):
+        print("Error: GOOGLE_API_KEY が設定されていません")
+        return False
+
+    from agents.tools.image_to_image import image_to_image
+
+    test_image = create_test_image()
+    print(f"テスト画像を作成: Base64長 = {len(test_image)}")
+
+    prompt = input("画像編集プロンプトを入力: ").strip()
+    if not prompt:
+        print("プロンプトが空です。スキップします。")
+        return False
+
+    print("\nGemini API を呼び出し中...")
+    result = image_to_image._tool_func(
         prompt=prompt,
         image_base64=test_image,
         mime_type="image/png"
@@ -90,7 +125,7 @@ def test_nanobanana():
     if result.get('success'):
         print(f"出力画像 Base64長: {len(result.get('image_base64', ''))}")
         img_data = base64.b64decode(result['image_base64'])
-        output_path = PROJECT_ROOT / 'test_output_nanobanana.png'
+        output_path = PROJECT_ROOT / 'test_output_image_to_image.png'
         with open(output_path, 'wb') as f:
             f.write(img_data)
         print(f"保存: {output_path}")
@@ -104,25 +139,32 @@ def main():
     print("ツール個別デバッグ\n")
     print("テストするツールを選択:")
     print("  1. jp_fonts (テキスト描画)")
-    print("  2. nanobanana (画像生成)")
-    print("  3. 両方")
+    print("  2. text_to_image (テキストから画像生成)")
+    print("  3. image_to_image (既存画像を編集)")
+    print("  4. すべて")
 
-    choice = input("\n選択 (1/2/3): ").strip()
+    choice = input("\n選択 (1/2/3/4): ").strip()
 
     jp_ok = None
-    nano_ok = None
+    t2i_ok = None
+    i2i_ok = None
 
-    if choice in ["1", "3"]:
+    if choice in ["1", "4"]:
         jp_ok = test_jp_fonts()
 
-    if choice in ["2", "3"]:
-        nano_ok = test_nanobanana()
+    if choice in ["2", "4"]:
+        t2i_ok = test_text_to_image()
+
+    if choice in ["3", "4"]:
+        i2i_ok = test_image_to_image()
 
     print("\n=== 結果 ===")
     if jp_ok is not None:
         print(f"jp_fonts: {'OK' if jp_ok else 'NG'}")
-    if nano_ok is not None:
-        print(f"nanobanana: {'OK' if nano_ok else 'NG'}")
+    if t2i_ok is not None:
+        print(f"text_to_image: {'OK' if t2i_ok else 'NG'}")
+    if i2i_ok is not None:
+        print(f"image_to_image: {'OK' if i2i_ok else 'NG'}")
 
 
 if __name__ == "__main__":

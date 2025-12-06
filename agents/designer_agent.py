@@ -11,7 +11,8 @@ from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 
-from .tools.nanobanana import nanobanana as _nanobanana
+from .tools.text_to_image import text_to_image as _text_to_image
+from .tools.image_to_image import image_to_image as _image_to_image
 from .tools.jp_fonts import jp_fonts as _jp_fonts, jp_fonts_multi as _jp_fonts_multi
 
 # .env.local を読み込み
@@ -91,7 +92,7 @@ class DesignerAgent:
 
         return json.loads(json_match.group())
 
-    def _execute_design(self, design: dict, image_base64: str) -> dict:
+    def _execute_design(self, design: dict, image_base64: str = None) -> dict:
         """設計JSONに基づいてツールを実行"""
         current_image = image_base64
         steps = []
@@ -100,11 +101,21 @@ class DesignerAgent:
         bg = design.get("background", {})
         if bg.get("action") == "generate" and bg.get("prompt"):
             print(f"  [Step 1] 背景生成: {bg['prompt'][:50]}...")
-            result = _nanobanana._tool_func(
-                prompt=bg["prompt"],
-                image_base64=current_image,
-                mime_type="image/png"
-            )
+
+            if current_image:
+                # 画像あり → image_to_image で編集
+                result = _image_to_image._tool_func(
+                    prompt=bg["prompt"],
+                    image_base64=current_image,
+                    mime_type="image/png"
+                )
+            else:
+                # 画像なし → text_to_image で新規生成
+                result = _text_to_image._tool_func(
+                    prompt=bg["prompt"],
+                    aspect_ratio="16:9"
+                )
+
             if result.get("success"):
                 current_image = result["image_base64"]
                 steps.append("背景を生成しました")
@@ -114,6 +125,11 @@ class DesignerAgent:
                 steps.append(f"背景生成に失敗: {error}")
         else:
             print("  [Step 1] 背景: 変更なし")
+            if not current_image:
+                return {
+                    "success": False,
+                    "error": "画像がなく、背景生成も指示されていません"
+                }
             steps.append("背景は変更なし")
 
         # Phase 2: テキスト追加
@@ -153,9 +169,6 @@ class DesignerAgent:
             dict: 生成結果
         """
         try:
-            if not image_base64:
-                return {"success": False, "error": "画像が指定されていません"}
-
             # Phase 1: 設計
             print("\n[Phase 1] プロンプトを解析中...")
             design = self._parse_design(user_prompt)

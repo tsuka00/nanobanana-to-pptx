@@ -1,6 +1,6 @@
 """
-@nanobanana ツール
-Gemini 2.5 Flash Image による画像生成
+Image-to-Image ツール
+Gemini 2.5 Flash Image による既存画像の編集
 """
 
 import base64
@@ -8,7 +8,6 @@ import io
 import os
 from strands import tool
 from google import genai
-from google.genai import types
 from PIL import Image
 
 MODEL = "gemini-2.5-flash-image"
@@ -23,12 +22,12 @@ def get_client():
 
 
 @tool
-def nanobanana(prompt: str, image_base64: str, mime_type: str = "image/png") -> dict:
+def image_to_image(prompt: str, image_base64: str, mime_type: str = "image/png") -> dict:
     """
-    背景画像を生成します（テキストは含めません）。
+    既存の画像を編集します（テキストは含めません）。
 
     Args:
-        prompt: 画像生成のプロンプト。背景のスタイルや雰囲気を指示します。
+        prompt: 画像編集のプロンプト。編集内容を詳細に指示します。
         image_base64: 元画像のBase64エンコードされたデータ
         mime_type: 画像のMIMEタイプ（デフォルト: image/png）
 
@@ -36,6 +35,7 @@ def nanobanana(prompt: str, image_base64: str, mime_type: str = "image/png") -> 
         dict: 生成された画像のBase64データを含む辞書
             - success: 成功したかどうか
             - image_base64: 生成された画像のBase64データ
+            - mime_type: 画像のMIMEタイプ
             - error: エラーメッセージ（失敗時）
     """
     try:
@@ -59,21 +59,14 @@ def nanobanana(prompt: str, image_base64: str, mime_type: str = "image/png") -> 
         # レスポンスから画像を抽出
         for part in response.parts:
             if part.inline_data is not None:
-                # inline_data から直接バイトデータを取得
                 image_data = part.inline_data.data
                 return {
                     "success": True,
-                    "image_base64": base64.b64encode(image_data).decode('utf-8'),
-                    "mime_type": part.inline_data.mime_type or "image/png"
+                    "image_base64": base64.b64encode(image_data).decode("utf-8"),
+                    "mime_type": part.inline_data.mime_type or "image/png",
                 }
 
-        return {
-            "success": False,
-            "error": "No image was generated in response"
-        }
+        return {"success": False, "error": "No image was generated in response"}
 
     except Exception as e:
-        return {
-            "success": False,
-            "error": str(e)
-        }
+        return {"success": False, "error": str(e)}
