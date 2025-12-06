@@ -13,13 +13,14 @@ from google import genai
 
 # Text-to-* ツール（新規生成）
 from .tools.text_to_background import text_to_background as _text_to_background
-from .tools.text_to_illustration import text_to_illustration as _text_to_illustration
 from .tools.text_to_title import text_to_title as _text_to_title
 from .tools.text_to_subtitle import text_to_subtitle as _text_to_subtitle
 
 # Image-to-* ツール（既存画像編集）
 from .tools.image_to_background import image_to_background as _image_to_background
-from .tools.image_to_illustration import image_to_illustration as _image_to_illustration
+
+# イラスト描画ツール（Pillow）
+from .tools.draw_illustration import draw_illustration as _draw_illustration
 
 # 合成ツール
 from .tools.compose_slide import compose_slide as _compose_slide
@@ -44,9 +45,15 @@ JSONのみを出力し、他のテキストは含めないでください。
     "prompt": "背景画像の生成プロンプト"
   },
   "illustration": {
-    "prompt": "イラスト/シェイプの生成プロンプト",
-    "x": X座標（左上基準）,
-    "y": Y座標（左上基準）
+    "type": "polygon",
+    "points": [[x1, y1], [x2, y2], [x3, y3], ...],
+    "fill": {
+      "type": "gradient",
+      "start": "#開始色",
+      "end": "#終了色",
+      "direction": "diagonal"
+    },
+    "opacity": 1.0
   },
   "title": {
     "text": "タイトルテキスト",
@@ -67,9 +74,20 @@ JSONのみを出力し、他のテキストは含めないでください。
 重要なルール:
 - ユーザーが指示していない要素は null にする
 - 背景は必ず指定する（背景なしの場合も白背景を指定）
-- イラストの座標は画像の左上を基準とする
 - タイトル/サブタイトルの座標はテキストの中心位置を指定する
 - 座標は 0-1920 (x) と 0-1080 (y) の範囲で指定
+
+illustration（幾何学シェイプ）の指定方法:
+- type: "polygon"（多角形）, "rectangle"（矩形）, "triangle"（三角形）, "ellipse"（楕円）
+- points: 多角形の頂点座標のリスト [[x1,y1], [x2,y2], ...]
+- fill.type: "solid"（単色）または "gradient"（グラデーション）
+- fill.color: 単色の場合の色
+- fill.start, fill.end: グラデーションの開始色と終了色
+- fill.direction: "vertical"（縦）, "horizontal"（横）, "diagonal"（斜め）
+- opacity: 不透明度 0.0-1.0
+
+シェイプの例（左下から斜めに覆う形）:
+"points": [[0, 400], [0, 1080], [800, 1080], [400, 400]]
 
 座標の目安（1920x1080）:
 - 中央: x=960, y=540
@@ -171,22 +189,15 @@ class DesignerAgent:
         else:
             print("  [Step 1] 背景: スキップ")
 
-        # 2. イラスト生成
+        # 2. イラスト生成（Pillow描画）
         illust = design.get("illustration")
-        if illust and illust.get("prompt"):
-            print(f"  [Step 2] イラスト生成: {illust['prompt'][:50]}...")
-            if input_image:
-                result = _image_to_illustration._tool_func(
-                    prompt=illust["prompt"],
-                    image_base64=input_image
-                )
-            else:
-                result = _text_to_illustration._tool_func(prompt=illust["prompt"])
+        if illust and illust.get("type"):
+            shape_type = illust.get("type", "polygon")
+            print(f"  [Step 2] イラスト生成: {shape_type}...")
+            result = _draw_illustration._tool_func(shape=illust)
 
             if result.get("success"):
                 elements["illustration"] = result["image_base64"]
-                elements["illustration_x"] = illust.get("x", 0)
-                elements["illustration_y"] = illust.get("y", 0)
                 path = save_image(result["image_base64"], "illustration", self.session_id)
                 steps.append(f"イラストを生成: {path}")
             else:
@@ -242,8 +253,8 @@ class DesignerAgent:
         result = _compose_slide._tool_func(
             background_base64=elements.get("background"),
             illustration_base64=elements.get("illustration"),
-            illustration_x=elements.get("illustration_x", 0),
-            illustration_y=elements.get("illustration_y", 0),
+            illustration_x=0,  # 座標は描画済みなので(0,0)に配置
+            illustration_y=0,
             title_base64=elements.get("title"),
             subtitle_base64=elements.get("subtitle")
         )
