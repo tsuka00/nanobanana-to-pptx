@@ -1,0 +1,31 @@
+{
+  "name": "nanobanana-to-pptx",
+  "version": "1.0.0",
+  "main": "index.js",
+  "imports": {
+    "#llm": "./llm/index.js",
+    "#llm/*": "./llm/*/index.js",
+    "#langfuse": "./langfuse/index.js",
+    "#plugin/*": "./plugin/*/index.js"
+  },
+  "scripts": {
+    "nanobanana": "node training/image-to-image/scripts/generate-with-text.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@fontsource/noto-sans-jp": "^5.2.8",
+    "@google/genai": "^1.31.0",
+    "@resvg/resvg-js": "^2.6.2",
+    "dotenv": "^16.4.5",
+    "fs-extra": "^11.3.2",
+    "imagetracerjs": "^1.2.6",
+    "langfuse": "^3.3.0",
+    "potrace": "^2.1.8",
+    "pptxgenjs": "^4.0.1",
+    "sharp": "^0.34.5"
+  }
+}
