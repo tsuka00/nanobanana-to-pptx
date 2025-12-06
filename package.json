@@ -3,10 +3,8 @@
   "version": "1.0.0",
   "main": "index.js",
   "imports": {
-    "#llm": "./llm/index.js",
-    "#llm/*": "./llm/*/index.js",
-    "#langfuse": "./langfuse/index.js",
-    "#plugin/*": "./plugin/*/index.js"
+    "#agent": "./llm/agent/index.js",
+    "#langfuse": "./langfuse/index.js"
   },
   "scripts": {
     "nanobanana": "node training/image-to-image/scripts/generate-with-text.js",
