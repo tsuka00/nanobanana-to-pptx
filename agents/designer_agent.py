@@ -1,22 +1,34 @@
 """
 Designer Agent
-自然言語の指示から画像デザインを生成するエージェント
+自然言語の指示から画像デザインを生成するエージェント（要素別生成版）
 """
 
 import os
 import json
 import base64
 import re
+from pathlib import Path
 from dotenv import load_dotenv
 from google import genai
-from google.genai import types
 
-from .tools.text_to_image import text_to_image as _text_to_image
-from .tools.image_to_image import image_to_image as _image_to_image
-from .tools.jp_fonts import jp_fonts as _jp_fonts, jp_fonts_multi as _jp_fonts_multi
+# Text-to-* ツール（新規生成）
+from .tools.text_to_background import text_to_background as _text_to_background
+from .tools.text_to_illustration import text_to_illustration as _text_to_illustration
+from .tools.text_to_title import text_to_title as _text_to_title
+from .tools.text_to_subtitle import text_to_subtitle as _text_to_subtitle
+
+# Image-to-* ツール（既存画像編集）
+from .tools.image_to_background import image_to_background as _image_to_background
+from .tools.image_to_illustration import image_to_illustration as _image_to_illustration
+
+# 合成ツール
+from .tools.compose_slide import compose_slide as _compose_slide
 
 # .env.local を読み込み
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env.local'))
+
+# 出力ディレクトリ
+OUTPUT_DIR = Path(__file__).parent.parent / "output"
 
 # 設計フェーズ用のモデル
 DESIGN_MODEL = "gemini-2.0-flash"
@@ -25,38 +37,51 @@ DESIGN_SYSTEM_PROMPT = """あなたは画像デザインの設計者です。
 ユーザーの指示を解析し、以下のJSON形式で設計を出力してください。
 JSONのみを出力し、他のテキストは含めないでください。
 
+キャンバスサイズは 1920x1080 (16:9) です。
+
 {
   "background": {
-    "action": "generate" または "keep",
-    "prompt": "背景生成プロンプト（actionがgenerateの場合のみ）"
+    "prompt": "背景画像の生成プロンプト"
   },
-  "texts": [
-    {
-      "text": "表示するテキスト",
-      "position": "配置位置",
-      "fontSize": フォントサイズ（数値）,
-      "color": "文字色"
-    }
-  ]
+  "illustration": {
+    "prompt": "イラスト/シェイプの生成プロンプト",
+    "x": X座標（左上基準）,
+    "y": Y座標（左上基準）
+  },
+  "title": {
+    "text": "タイトルテキスト",
+    "x": X座標（中心基準）,
+    "y": Y座標（中心基準）,
+    "fontSize": フォントサイズ,
+    "color": "文字色"
+  },
+  "subtitle": {
+    "text": "サブタイトルテキスト",
+    "x": X座標（中心基準）,
+    "y": Y座標（中心基準）,
+    "fontSize": フォントサイズ,
+    "color": "文字色"
+  }
 }
 
 重要なルール:
-- ユーザーが明示的に指示していないことはJSONに含めない
-- テキスト追加の指示がなければ texts は空配列 []
-- 背景変更の指示がなければ background.action は "keep"
-- background.action が "keep" の場合、prompt は不要
+- ユーザーが指示していない要素は null にする
+- 背景は必ず指定する（背景なしの場合も白背景を指定）
+- イラストの座標は画像の左上を基準とする
+- タイトル/サブタイトルの座標はテキストの中心位置を指定する
+- 座標は 0-1920 (x) と 0-1080 (y) の範囲で指定
 
-position の選択肢:
-- center-top: メインタイトル向け
-- center-bottom: サブタイトル向け
-- center: 中央
-- top, bottom: 上部/下部
-- top-left, top-right, bottom-left, bottom-right: 四隅
+座標の目安（1920x1080）:
+- 中央: x=960, y=540
+- タイトル（中央上部）: x=960, y=400
+- サブタイトル（タイトル下）: x=960, y=500
+- 左寄せ: x=200
+- 右寄せ: x=1720
 
 fontSize の目安:
-- メインタイトル: 64
-- サブタイトル: 36
-- キャプション: 24
+- メインタイトル: 64-80
+- サブタイトル: 36-48
+- キャプション: 24-32
 
 color:
 - 暗い背景には "#ffffff"（白）
@@ -64,15 +89,35 @@ color:
 """
 
 
-class DesignerAgent:
-    """画像デザインを生成するエージェント"""
+def save_image(image_base64: str, folder: str, session_id: str) -> str:
+    """画像を保存してパスを返す"""
+    output_path = OUTPUT_DIR / folder / f"{session_id}.png"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    def __init__(self, api_key: str = None):
+    image_data = base64.b64decode(image_base64)
+    with open(output_path, 'wb') as f:
+        f.write(image_data)
+
+    return str(output_path)
+
+
+class DesignerAgent:
+    """画像デザインを生成するエージェント（要素別生成版）"""
+
+    def __init__(self, api_key: str = None, session_id: str = None):
         self.api_key = api_key or os.environ.get("GOOGLE_API_KEY")
         if not self.api_key:
             raise ValueError("GOOGLE_API_KEY is required")
 
         self.client = genai.Client(api_key=self.api_key)
+        self.session_id = session_id or self._generate_session_id()
+
+    def _generate_session_id(self) -> str:
+        """セッションIDを生成"""
+        import random
+        import string
+        chars = string.ascii_uppercase + string.digits
+        return ''.join(random.choices(chars, k=4)) + '-' + ''.join(random.choices(string.digits, k=4))
 
     def _parse_design(self, user_prompt: str) -> dict:
         """ユーザーのプロンプトをJSON設計に変換"""
@@ -92,75 +137,143 @@ class DesignerAgent:
 
         return json.loads(json_match.group())
 
-    def _execute_design(self, design: dict, image_base64: str = None) -> dict:
-        """設計JSONに基づいてツールを実行"""
-        current_image = image_base64
+    def _execute_design(self, design: dict, input_image: str = None) -> dict:
+        """設計JSONに基づいて各要素を生成
+
+        Args:
+            design: 設計JSON
+            input_image: 入力画像のBase64データ（オプション）
+        """
         steps = []
+        elements = {}
+        mode = "image-to-image" if input_image else "text-to-image"
+        print(f"  モード: {mode}")
 
-        # Phase 1: 背景生成
-        bg = design.get("background", {})
-        if bg.get("action") == "generate" and bg.get("prompt"):
+        # 1. 背景生成
+        bg = design.get("background")
+        if bg and bg.get("prompt"):
             print(f"  [Step 1] 背景生成: {bg['prompt'][:50]}...")
-
-            if current_image:
-                # 画像あり → image_to_image で編集
-                result = _image_to_image._tool_func(
+            if input_image:
+                result = _image_to_background._tool_func(
                     prompt=bg["prompt"],
-                    image_base64=current_image,
-                    mime_type="image/png"
+                    image_base64=input_image
                 )
             else:
-                # 画像なし → text_to_image で新規生成（16:9固定）
-                result = _text_to_image._tool_func(prompt=bg["prompt"])
+                result = _text_to_background._tool_func(prompt=bg["prompt"])
 
             if result.get("success"):
-                current_image = result["image_base64"]
-                steps.append("背景を生成しました")
+                elements["background"] = result["image_base64"]
+                path = save_image(result["image_base64"], "background", self.session_id)
+                steps.append(f"背景を生成: {path}")
             else:
-                error = result.get("error", "不明なエラー")
-                print(f"  [Error] 背景生成失敗: {error}")
-                steps.append(f"背景生成に失敗: {error}")
+                print(f"  [Error] 背景生成失敗: {result.get('error')}")
+                steps.append(f"背景生成に失敗: {result.get('error')}")
         else:
-            print("  [Step 1] 背景: 変更なし")
-            if not current_image:
-                return {
-                    "success": False,
-                    "error": "画像がなく、背景生成も指示されていません"
-                }
-            steps.append("背景は変更なし")
+            print("  [Step 1] 背景: スキップ")
 
-        # Phase 2: テキスト追加
-        texts = design.get("texts", [])
-        if texts:
-            print(f"  [Step 2] テキスト追加: {len(texts)}個")
-            result = _jp_fonts_multi._tool_func(
-                image_base64=current_image,
-                texts=texts
+        # 2. イラスト生成
+        illust = design.get("illustration")
+        if illust and illust.get("prompt"):
+            print(f"  [Step 2] イラスト生成: {illust['prompt'][:50]}...")
+            if input_image:
+                result = _image_to_illustration._tool_func(
+                    prompt=illust["prompt"],
+                    image_base64=input_image
+                )
+            else:
+                result = _text_to_illustration._tool_func(prompt=illust["prompt"])
+
+            if result.get("success"):
+                elements["illustration"] = result["image_base64"]
+                elements["illustration_x"] = illust.get("x", 0)
+                elements["illustration_y"] = illust.get("y", 0)
+                path = save_image(result["image_base64"], "illustration", self.session_id)
+                steps.append(f"イラストを生成: {path}")
+            else:
+                print(f"  [Error] イラスト生成失敗: {result.get('error')}")
+                steps.append(f"イラスト生成に失敗: {result.get('error')}")
+        else:
+            print("  [Step 2] イラスト: スキップ")
+
+        # 3. タイトル生成
+        title = design.get("title")
+        if title and title.get("text"):
+            print(f"  [Step 3] タイトル生成: {title['text'][:30]}...")
+            result = _text_to_title._tool_func(
+                text=title["text"],
+                x=title.get("x", 960),
+                y=title.get("y", 400),
+                font_size=title.get("fontSize", 64),
+                color=title.get("color", "#ffffff")
             )
             if result.get("success"):
-                current_image = result["image_base64"]
-                steps.append(f"{len(texts)}個のテキストを追加しました")
+                elements["title"] = result["image_base64"]
+                path = save_image(result["image_base64"], "title", self.session_id)
+                steps.append(f"タイトルを生成: {path}")
             else:
-                error = result.get("error", "不明なエラー")
-                print(f"  [Error] テキスト追加失敗: {error}")
-                steps.append(f"テキスト追加に失敗: {error}")
+                print(f"  [Error] タイトル生成失敗: {result.get('error')}")
+                steps.append(f"タイトル生成に失敗: {result.get('error')}")
         else:
-            print("  [Step 2] テキスト: 追加なし")
+            print("  [Step 3] タイトル: スキップ")
 
-        return {
-            "success": True,
-            "image_base64": current_image,
-            "steps": steps
-        }
+        # 4. サブタイトル生成
+        subtitle = design.get("subtitle")
+        if subtitle and subtitle.get("text"):
+            print(f"  [Step 4] サブタイトル生成: {subtitle['text'][:30]}...")
+            result = _text_to_subtitle._tool_func(
+                text=subtitle["text"],
+                x=subtitle.get("x", 960),
+                y=subtitle.get("y", 500),
+                font_size=subtitle.get("fontSize", 36),
+                color=subtitle.get("color", "#ffffff")
+            )
+            if result.get("success"):
+                elements["subtitle"] = result["image_base64"]
+                path = save_image(result["image_base64"], "subtitle", self.session_id)
+                steps.append(f"サブタイトルを生成: {path}")
+            else:
+                print(f"  [Error] サブタイトル生成失敗: {result.get('error')}")
+                steps.append(f"サブタイトル生成に失敗: {result.get('error')}")
+        else:
+            print("  [Step 4] サブタイトル: スキップ")
 
-    def generate(self, user_prompt: str, image_base64: str = None, mime_type: str = "image/png") -> dict:
+        # 5. 合成
+        print("  [Step 5] 合成中...")
+        result = _compose_slide._tool_func(
+            background_base64=elements.get("background"),
+            illustration_base64=elements.get("illustration"),
+            illustration_x=elements.get("illustration_x", 0),
+            illustration_y=elements.get("illustration_y", 0),
+            title_base64=elements.get("title"),
+            subtitle_base64=elements.get("subtitle")
+        )
+
+        if result.get("success"):
+            path = save_image(result["image_base64"], "result", self.session_id)
+            steps.append(f"合成完了: {path}")
+            return {
+                "success": True,
+                "image_base64": result["image_base64"],
+                "result_path": path,
+                "steps": steps
+            }
+        else:
+            print(f"  [Error] 合成失敗: {result.get('error')}")
+            steps.append(f"合成に失敗: {result.get('error')}")
+            return {
+                "success": False,
+                "error": result.get("error"),
+                "steps": steps
+            }
+
+    def generate(self, user_prompt: str, image_base64: str = None) -> dict:
         """
         ユーザーの指示から画像を生成
 
         Args:
             user_prompt: ユーザーの自然言語指示
-            image_base64: 元画像のBase64データ
-            mime_type: 画像のMIMEタイプ
+            image_base64: 入力画像のBase64データ（オプション）
+                          指定すると image-to-image モードで動作
 
         Returns:
             dict: 生成結果
@@ -173,13 +286,15 @@ class DesignerAgent:
 
             # Phase 2: 実行
             print("\n[Phase 2] 設計を実行中...")
-            result = self._execute_design(design, image_base64)
+            result = self._execute_design(design, input_image=image_base64)
 
             return {
-                "success": True,
+                "success": result.get("success", False),
+                "session_id": self.session_id,
                 "design": design,
                 "steps": result.get("steps", []),
                 "image_base64": result.get("image_base64"),
+                "result_path": result.get("result_path"),
                 "response": "\n".join(result.get("steps", []))
             }
 
@@ -187,6 +302,7 @@ class DesignerAgent:
             import traceback
             return {
                 "success": False,
+                "session_id": self.session_id,
                 "error": str(e),
                 "traceback": traceback.format_exc()
             }
@@ -205,11 +321,7 @@ def main():
         sys.exit(1)
 
     agent = DesignerAgent()
-    result = agent.generate(
-        user_prompt=params.get("userPrompt", ""),
-        image_base64=params.get("imageBase64"),
-        mime_type=params.get("mimeType", "image/png")
-    )
+    result = agent.generate(user_prompt=params.get("userPrompt", ""))
 
     print(json.dumps(result, ensure_ascii=False))
 

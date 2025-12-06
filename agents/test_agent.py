@@ -1,28 +1,16 @@
 #!/usr/bin/env python3
 """
-Designer Agent インタラクティブテスト
+Designer Agent インタラクティブテスト（要素別生成版）
 """
 
 import os
 import sys
 import base64
-import random
-import string
 from pathlib import Path
 
 # プロジェクトルートをパスに追加
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
-
-
-def generate_run_id():
-    """固有のID生成（例: ABCD-1234）"""
-    letters = ''.join(random.choices(string.ascii_uppercase, k=4))
-    numbers = ''.join(random.choices(string.digits, k=4))
-    return f"{letters}-{numbers}"
-
-from PIL import Image
-import io
 
 # .env.local を読み込み
 from dotenv import load_dotenv
@@ -30,30 +18,11 @@ load_dotenv(dotenv_path=PROJECT_ROOT / '.env.local')
 
 from agents import DesignerAgent
 
-# 出力ディレクトリ
-OUTPUT_DIR = PROJECT_ROOT / "output"
 
-
-def create_test_image(width=1280, height=720, color='#2d3436'):
-    """テスト用の画像を作成"""
-    img = Image.new('RGB', (width, height), color=color)
-    buffer = io.BytesIO()
-    img.save(buffer, format='PNG')
-    return base64.b64encode(buffer.getvalue()).decode('utf-8')
-
-
-def load_image(path: str):
+def load_image(path: str) -> str:
     """画像ファイルを読み込んでBase64に変換"""
     with open(path, 'rb') as f:
         return base64.b64encode(f.read()).decode('utf-8')
-
-
-def save_result(image_base64: str, output_path: str):
-    """Base64画像をファイルに保存"""
-    img_data = base64.b64decode(image_base64)
-    with open(output_path, 'wb') as f:
-        f.write(img_data)
-    print(f"保存しました: {output_path}")
 
 
 def main():
@@ -63,30 +32,28 @@ def main():
         print(".env.local に GOOGLE_API_KEY を設定してください")
         sys.exit(1)
 
-    # 実行IDを生成
-    run_id = generate_run_id()
-    print(f"=== Designer Agent [ID: {run_id}] ===\n")
-
     # エージェントを初期化
     print("エージェントを初期化中...")
     agent = DesignerAgent()
-    print("初期化完了!\n")
+    print(f"初期化完了! [Session ID: {agent.session_id}]\n")
 
-    # 画像の準備
-    print("画像ファイルのパスを入力 (空でテスト画像を生成):")
+    # 画像入力（オプション）
+    print("画像ファイルのパスを入力 (空でtext-to-imageモード):")
     image_input = input("> ").strip().strip("'\"")
 
-    if image_input and os.path.exists(image_input):
-        image_base64 = load_image(image_input)
-        print(f"画像を読み込みました: {image_input}")
-    elif image_input:
-        print(f"ファイルが見つかりません: {image_input}")
-        sys.exit(1)
+    image_base64 = None
+    if image_input:
+        if os.path.exists(image_input):
+            image_base64 = load_image(image_input)
+            print(f"画像を読み込みました: {image_input}")
+            print("モード: image-to-image\n")
+        else:
+            print(f"ファイルが見つかりません: {image_input}")
+            sys.exit(1)
     else:
-        image_base64 = create_test_image()
-        print("テスト画像を生成しました (1280x720)")
+        print("モード: text-to-image\n")
 
-    print("\n" + "=" * 50)
+    print("=" * 50)
     print("プロンプトを入力してください (空行で実行)")
     print("=" * 50 + "\n")
 
@@ -123,21 +90,8 @@ def main():
     if result.get('success'):
         print(result.get('response', ''))
 
-        # 結果画像があれば自動保存
-        if result.get('image_base64'):
-            # 出力ディレクトリを作成
-            OUTPUT_DIR.mkdir(exist_ok=True)
-
-            # ID付きファイル名
-            save_path = OUTPUT_DIR / f"{run_id}.png"
-
-            img_data = base64.b64decode(result['image_base64'])
-            with open(save_path, 'wb') as f:
-                f.write(img_data)
-
-            print(f"\n画像を保存しました: {save_path}")
-        else:
-            print("\n(結果画像がありません)")
+        if result.get('result_path'):
+            print(f"\n最終結果: {result.get('result_path')}")
     else:
         print(f"Error: {result.get('error')}")
         if result.get('traceback'):
