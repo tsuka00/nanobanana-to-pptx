@@ -5,6 +5,7 @@ Compose Slide ツール
 
 import base64
 import io
+from typing import Optional
 from PIL import Image
 from strands import tool
 
@@ -31,12 +32,12 @@ def image_to_base64(image: Image.Image) -> str:
 
 @tool
 def compose_slide(
-    background_base64: str = None,
-    illustration_base64: str = None,
+    background_base64: Optional[str] = None,
+    illustration_base64: Optional[str] = None,
     illustration_x: int = 0,
     illustration_y: int = 0,
-    title_base64: str = None,
-    subtitle_base64: str = None
+    title_base64: Optional[str] = None,
+    subtitle_base64: Optional[str] = None
 ) -> dict:
     """
     各要素を合成してスライド画像を生成します。

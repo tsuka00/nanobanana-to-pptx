@@ -1,50 +1,127 @@
-# Nanobanana workflows (text-to-image / image-to-image)
+# Nanobanana Designer Agent
 
-SVG/PPTXパイプラインは停止し、生成ワークフロー（text-to-image / image-to-image）に整理しました。
+自然言語の指示から画像デザインを生成するAIエージェントシステムです。Strands Agents フレームワークと Google Gemini API を使用しています。
 
-## 環境変数 (.env / .env.local)
-- `.env.local` があれば優先。なければ `.env` を読み込みます。
-  ```env
-  ELEMENTS=data/elements.json        # 省略時: data/elements.example.json
-  LAYOUT=data/layout.json            # 省略時: data/layout.example.json
-  GOOGLE_API_KEY=your-google-genai-key                      # Geminiで画像生成（必須）
-  LANGFUSE_PUBLIC_KEY=your-langfuse-public-key              # 任意（追跡用）
-  LANGFUSE_SECRET_KEY=your-langfuse-secret-key              # 任意（追跡用）
-  LANGFUSE_BASE_URL=https://cloud.langfuse.com              # 任意（追跡用）
-  ```
-- 雛形: `.env.local.example` をコピーして `.env.local` を作成してください。
+## 概要
 
-## 実運用手順
-1) 画像生成（text-to-image）: `npm run workflow` でプロンプト入力→Gemini生成（`.env/.env.local` に `GOOGLE_API_KEY` 必須）。入出力は `workflow/text-to-image/data-asset/`（任意の素材置き場）と `workflow/text-to-image/output/` を使用。
-2) 画像生成（image-to-imageトレーニング）: `npm run train <画像パス>` でプロンプトを実行後に入力。入出力は `workflow/image-to-image/data-asset/` と `workflow/image-to-image/output/` を使用。
-3) 必要に応じて `npm run fetch:nanobanana` で要素別生成、`npm run sample` でデモ用入力生成
+このシステムは、ユーザーの自然言語指示を解析し、以下の要素を個別に生成・合成してスライド画像を作成します：
 
-## Gemini (Google GenAI) で要素画像を生成する場合
-- `.env` または `.env.local` に `GOOGLE_API_KEY` を設定（モデルは固定で `gemini-2.5-flash-image`）
-- `ELEMENTS` で指定した要素リストの `prompt` を使って生成: `npm run fetch:nanobanana`
+- **背景（Background）**: Gemini による画像生成
+- **イラスト（Illustration）**: Pillow による幾何学シェイプ描画（透過PNG）
+- **タイトル（Title）**: Pillow によるテキスト描画（透過PNG）
+- **サブタイトル（Subtitle）**: Pillow によるテキスト描画（透過PNG）
 
-## トレーニング用（既存画像をもとに同じIDで生成 & Langfuseで記録）
-- もっと簡単に: 画像パスだけ渡してプロンプトは実行時入力  
-  `npm run train workflow/image-to-image/data-asset/id-0001.png`
-  （実行後にプロンプトを聞かれます）
-- 明示指定の例:  
-  `npm run train -- --id=0001 --image=workflow/image-to-image/data-asset/id-0001.png --prompt="同じテイストで生成"`
-- 出力: `workflow/image-to-image/output/id-0001-1234.png`（ID＋ランダム4桁）
-- Langfuse: trainは`category=train`でtraceを作成し、usage（Gemini使用量が返る場合）とプロンプト/パラメータを記録。完了後に`good/bad/skip`でフィードバックを入力可能（trace.scoreに保存）。
-- Langfuse連携（任意）：`.env`/`.env.local` に `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASE_URL` を設定すると、trace/span にプロンプトや出力パスを記録します。
+## 動作モード
 
-## ターミナルでプロンプトを入力してワークフロー実行
-- コマンド: `npm run workflow`
-- ターミナル上で背景/メイン/バッジのプロンプトとヘッドライン文言を入力すると、`output/tmp/session-*.json` を自動生成し、Geminiで画像生成 → パイプライン実行まで一括で行います（`GOOGLE_API_KEY` が必須）。
-- Langfuse: workflowは`category=workflow`でtraceを作成し、完了後に`good/bad/skip`でフィードバックを入力できます。
+1. **text-to-image**: プロンプトのみで新規画像を生成
+2. **image-to-image**: 参考画像を元に新規画像を生成（参考画像のスタイルや構図を参照）
 
-## 主要ファイル
-- `workflow/text-to-image/*` text-to-image ワークフロー
-- `workflow/image-to-image/*` image-to-image トレーニングワークフロー
-- `workflow/image-to-image/make-samples.js` サンプル入力生成（必要なければ未使用でOK）
-- `data/elements.example.json` 要素定義サンプル（Nanobananaプロンプトメモもここに残せます）。
-- `data/layout.example.json` レイアウトサンプル（キャンバス設定＋レイヤ配置＋テキスト）。
+## 環境構築
 
-## カスタマイズのポイント
-- Langfuseキーを設定すると trace/span/generation にプロンプトやフィードバック（good/bad）を保存できます。
-- モデルは `gemini-2.5-flash-image` 固定。必要ならスクリプト側で変更してください。
+### 必要条件
+
+- Python 3.12+
+- Node.js v22+ (オプション)
+
+### セットアップ
+
+```bash
+# 依存パッケージのインストール
+pip install -r requirements.txt
+
+# 環境変数の設定
+cp .env.local.example .env.local
+# .env.local に GOOGLE_API_KEY を設定
+```
+
+### 環境変数
+
+`.env.local` に以下を設定：
+
+```env
+GOOGLE_API_KEY=your-google-genai-key  # Gemini API キー（必須）
+```
+
+## 使用方法
+
+### インタラクティブモード
+
+```bash
+python -m agents.test_agent
+```
+
+プロンプトを入力すると、text-to-image モードで画像を生成します。
+画像パス付きで入力すると、image-to-image モードで生成します。
+
+### プログラムからの使用
+
+```python
+from agents.designer_agent import DesignerAgent
+
+agent = DesignerAgent()
+
+# text-to-image モード
+result = agent.generate("青空の背景にタイトル「Hello World」を配置")
+
+# image-to-image モード（参考画像あり）
+import base64
+with open("reference.png", "rb") as f:
+    image_base64 = base64.b64encode(f.read()).decode()
+
+result = agent.generate(
+    "この画像のスタイルで新しい背景を生成",
+    image_base64=image_base64
+)
+```
+
+## 出力
+
+生成された画像は `output/` フォルダに保存されます：
+
+```
+output/
+  background/   # 背景画像
+  illustration/ # イラスト（透過PNG）
+  title/        # タイトル（透過PNG）
+  subtitle/     # サブタイトル（透過PNG）
+  result/       # 最終合成画像
+```
+
+各画像はセッションID（例: `SYV4-1867.png`）で管理されます。
+
+## ドキュメント
+
+詳細なドキュメントは `docs/` フォルダを参照してください：
+
+- [システム概要](docs/overview.md) - アーキテクチャと処理フロー
+- [ツール一覧](docs/tools.md) - 各ツールの詳細仕様
+- [JSONスキーマ](docs/json-schema.md) - 設計JSONの仕様
+
+## ディレクトリ構成
+
+```
+nanobanana-to-pptx/
+  agents/
+    designer_agent.py    # メインエージェント
+    test_agent.py        # テスト用スクリプト
+    tools/
+      text_to_background.py   # 背景生成（text-to-image）
+      image_to_background.py  # 背景生成（image-to-image）
+      draw_illustration.py    # イラスト描画（Pillow）
+      text_to_title.py        # タイトル描画
+      text_to_subtitle.py     # サブタイトル描画
+      compose_slide.py        # 合成ツール
+      jp_fonts.py             # 日本語フォント設定
+  output/                # 生成画像の出力先
+  docs/                  # ドキュメント
+```
+
+## 技術スタック
+
+- **Strands Agents**: エージェントフレームワーク
+- **Google Gemini API**: 画像生成（gemini-2.5-flash-image）、設計解析（gemini-2.0-flash）
+- **Pillow**: テキスト描画、シェイプ描画、画像合成
+
+## ライセンス
+
+MIT License
