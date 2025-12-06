@@ -10,6 +10,9 @@
   },
   "scripts": {
     "nanobanana": "node training/image-to-image/scripts/generate-with-text.js",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "typecheck": "tsc --noEmit",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -27,5 +30,10 @@
     "potrace": "^2.1.8",
     "pptxgenjs": "^4.0.1",
     "sharp": "^0.34.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "eslint": "^9.39.1",
+    "typescript": "^5.9.3"
   }
 }

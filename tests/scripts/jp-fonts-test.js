@@ -54,7 +54,7 @@ async function test() {
     await fs.writeFile(overlayOutPath, overlayBuffer);
     console.log(`   Saved: ${overlayOutPath}`);
   } else {
-    console.log(`   Skipped: sample image not found`);
+    console.log('   Skipped: sample image not found');
   }
 
   console.log('\n=== Test Complete ===');

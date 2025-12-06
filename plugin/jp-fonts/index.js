@@ -1,5 +1,4 @@
 const path = require('path');
-const fs = require('fs');
 const sharp = require('sharp');
 const { Resvg } = require('@resvg/resvg-js');
 
@@ -79,8 +78,6 @@ function escapeXml(str) {
  */
 async function renderText({ text, fontSize = 48, color = '#000000', backgroundColor, fontKey = DEFAULT_FONT }) {
   const fontPath = getFontPath(fontKey);
-  const fontData = fs.readFileSync(fontPath);
-
   const svg = createTextSvg({ text, fontSize, color });
 
   const resvg = new Resvg(svg, {
