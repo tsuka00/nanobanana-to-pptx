@@ -291,6 +291,202 @@ result = text_to_title._tool_func(
 
 ---
 
+## SVGツール
+
+### image_to_svg
+
+ラスター画像をSVGベクターに変換します。
+
+**ファイル**: `agents/tools/image_to_svg.py`
+
+**使用ライブラリ**: vtracer
+
+**引数**:
+
+| 引数名 | 型 | 必須 | デフォルト | 説明 |
+|--------|-----|------|------------|------|
+| image_base64 | str | 必須 | - | 変換する画像のBase64データ |
+| colormode | str | 任意 | "color" | 色モード（color / binary） |
+| quality | str | 任意 | "balanced" | 品質プリセット（fast / balanced / high） |
+
+**品質プリセット**:
+
+| プリセット | 説明 |
+|------------|------|
+| fast | 高速変換、粗いパス |
+| balanced | バランス重視（推奨） |
+| high | 高精度、詳細なパス |
+
+**戻り値**:
+
+```json
+{
+  "success": true,
+  "svg": "<svg>...</svg>"
+}
+```
+
+**仕様**:
+- vtracer を使用してラスター画像をベクターパスに変換
+- 編集可能なSVGパスを出力
+- 背景画像のSVG変換に使用
+
+---
+
+### draw_illustration_svg
+
+幾何学シェイプをSVG要素として描画します。
+
+**ファイル**: `agents/tools/draw_illustration_svg.py`
+
+**引数**:
+
+| 引数名 | 型 | 必須 | デフォルト | 説明 |
+|--------|-----|------|------------|------|
+| shape | dict | 必須 | - | シェイプ定義（draw_illustrationと同じ形式） |
+
+**戻り値**:
+
+```json
+{
+  "success": true,
+  "svg": "<svg>...</svg>"
+}
+```
+
+**仕様**:
+- ネイティブSVG要素（polygon, rect, ellipse）を出力
+- グラデーション対応（linearGradient使用）
+- Illustratorで編集可能なベクターシェイプ
+
+---
+
+### text_to_title_svg
+
+タイトルテキストをSVGとして生成します。
+
+**ファイル**: `agents/tools/text_to_title_svg.py`
+
+**引数**:
+
+| 引数名 | 型 | 必須 | デフォルト | 説明 |
+|--------|-----|------|------------|------|
+| text | str | 必須 | - | タイトルテキスト |
+| x | int | 任意 | 960 | X座標（テキスト中心） |
+| y | int | 任意 | 400 | Y座標（テキスト中心） |
+| font_size | int | 任意 | 64 | フォントサイズ |
+| color | str | 任意 | "#ffffff" | 文字色 |
+| font_family | str | 任意 | "Hiragino Sans" | フォントファミリー |
+
+**戻り値**:
+
+```json
+{
+  "success": true,
+  "svg": "<svg>...</svg>"
+}
+```
+
+**仕様**:
+- SVG text 要素として出力
+- フォント: Hiragino Sans（Illustrator互換）
+- text-anchor: middle（中央揃え）
+
+---
+
+### text_to_subtitle_svg
+
+サブタイトルテキストをSVGとして生成します。
+
+**ファイル**: `agents/tools/text_to_subtitle_svg.py`
+
+**引数**:
+
+| 引数名 | 型 | 必須 | デフォルト | 説明 |
+|--------|-----|------|------------|------|
+| text | str | 必須 | - | サブタイトルテキスト |
+| x | int | 任意 | 960 | X座標（テキスト中心） |
+| y | int | 任意 | 500 | Y座標（テキスト中心） |
+| font_size | int | 任意 | 36 | フォントサイズ |
+| color | str | 任意 | "#ffffff" | 文字色 |
+| font_family | str | 任意 | "Hiragino Sans" | フォントファミリー |
+
+**戻り値**:
+
+```json
+{
+  "success": true,
+  "svg": "<svg>...</svg>"
+}
+```
+
+---
+
+### compose_slide_svg
+
+各SVG要素を合成して1枚のSVGを生成します（Illustrator互換）。
+
+**ファイル**: `agents/tools/compose_slide_svg.py`
+
+**引数**:
+
+| 引数名 | 型 | 必須 | デフォルト | 説明 |
+|--------|-----|------|------------|------|
+| background_svg | str | 任意 | None | 背景SVG文字列 |
+| illustration_svg | str | 任意 | None | イラストSVG文字列 |
+| title_svg | str | 任意 | None | タイトルSVG文字列 |
+| subtitle_svg | str | 任意 | None | サブタイトルSVG文字列 |
+
+**戻り値**:
+
+```json
+{
+  "success": true,
+  "svg": "<?xml version=\"1.0\"?>..."
+}
+```
+
+**合成順序（レイヤー順）**:
+
+1. background（最背面）
+2. illustration
+3. title
+4. subtitle（最前面）
+
+**仕様**:
+- 各レイヤーに `id` 属性を付与（Illustratorでレイヤー名として認識）
+- XML宣言と xmlns:xlink 名前空間を含む
+- 背景SVGは自動的にキャンバスサイズ（1920x1080）にスケーリング
+- 各要素の `<defs>` セクションを統合
+
+**出力例**:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="1920" height="1080"
+     viewBox="0 0 1920 1080">
+  <defs>
+    <!-- 統合されたグラデーション定義など -->
+  </defs>
+  <g id="background">
+    <!-- 背景コンテンツ -->
+  </g>
+  <g id="illustration">
+    <!-- イラストコンテンツ -->
+  </g>
+  <g id="title">
+    <!-- タイトルコンテンツ -->
+  </g>
+  <g id="subtitle">
+    <!-- サブタイトルコンテンツ -->
+  </g>
+</svg>
+```
+
+---
+
 ## 互換性ツール（レガシー）
 
 以下のツールは互換性のために残されています：

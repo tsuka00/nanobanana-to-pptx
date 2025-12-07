@@ -15,9 +15,9 @@ Nanobanana Designer Agent は、自然言語の指示から画像デザインを
 │  └──────────────┘    └───────────────┘    └────────────────────┘   │
 │                             │                        │              │
 │                             ▼                        ▼              │
-│                      ┌───────────┐           ┌─────────────┐       │
-│                      │ 設計JSON  │           │ 最終合成画像 │       │
-│                      └───────────┘           └─────────────┘       │
+│                      ┌───────────┐           ┌─────────────────┐   │
+│                      │ 設計JSON  │           │ PNG + SVG 出力   │   │
+│                      └───────────┘           └─────────────────┘   │
 │                                                                      │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -92,11 +92,37 @@ Step 4: サブタイトル生成
        └── Pillow でテキストを透過PNGとして描画
    │
    ▼
-Step 5: 合成
+Step 5: PNG合成
    │
    └── compose_slide ツール
-       └── 全要素を重ね合わせて最終画像を生成
+       └── 全要素を重ね合わせて最終PNG画像を生成
+   │
+   ▼
+Step 6: SVG合成
+   │
+   └── compose_slide_svg ツール
+       └── 全SVG要素を合成して編集可能なSVGを生成
+       └── Adobe Illustrator で各レイヤーを個別編集可能
 ```
+
+### SVG生成の詳細
+
+各要素は PNG と並行して SVG としても生成されます：
+
+| 要素 | PNG生成 | SVG生成 |
+|------|---------|---------|
+| 背景 | Gemini生成画像 | image_to_svg（vtracer変換） |
+| イラスト | draw_illustration（Pillow） | draw_illustration_svg（ネイティブSVG） |
+| タイトル | text_to_title（Pillow） | text_to_title_svg（SVGテキスト） |
+| サブタイトル | text_to_subtitle（Pillow） | text_to_subtitle_svg（SVGテキスト） |
+
+**背景のSVG変換**:
+- AI生成画像（ラスター）を vtracer でベクターパスに変換
+- 編集可能なパスとして出力
+
+**テキストのSVG出力**:
+- ネイティブSVGテキスト要素として出力
+- フォント: Hiragino Sans（Illustrator互換）
 
 ## キャンバス仕様
 
@@ -144,20 +170,39 @@ result = agent.generate(
 ## 出力ファイル構成
 
 ```
-output/
-├── background/     # 背景画像
+output/                     # PNG画像
+├── background/             # 背景画像
 │   └── SESSION_ID.png
-├── illustration/   # イラスト（透過PNG）
+├── illustration/           # イラスト（透過PNG）
 │   └── SESSION_ID.png
-├── title/          # タイトル（透過PNG）
+├── title/                  # タイトル（透過PNG）
 │   └── SESSION_ID.png
-├── subtitle/       # サブタイトル（透過PNG）
+├── subtitle/               # サブタイトル（透過PNG）
 │   └── SESSION_ID.png
-└── result/         # 最終合成画像
+└── result/                 # 最終合成画像
     └── SESSION_ID.png
+
+output_svg/                 # SVGファイル（編集可能）
+├── background/             # 背景SVG（vtracer変換）
+│   └── SESSION_ID.svg
+├── illustration/           # イラストSVG
+│   └── SESSION_ID.svg
+├── title/                  # タイトルSVG
+│   └── SESSION_ID.svg
+├── subtitle/               # サブタイトルSVG
+│   └── SESSION_ID.svg
+└── result/                 # 最終合成SVG
+    └── SESSION_ID.svg
 ```
 
 セッションIDは `XXXX-YYYY` 形式（例: `SYV4-1867`）で自動生成されます。
+
+### SVG出力の特徴
+
+- **編集可能**: Illustrator で各レイヤーを個別に編集可能
+- **レイヤー構造**: background / illustration / title / subtitle の4レイヤー
+- **ID属性**: 各レイヤーに id 属性を付与（Illustrator でレイヤー名として認識）
+- **スケーリング**: 背景SVGは自動的にキャンバスサイズにスケーリング
 
 ## 使用モデル
 

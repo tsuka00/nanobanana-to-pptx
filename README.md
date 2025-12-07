@@ -7,9 +7,18 @@
 このシステムは、ユーザーの自然言語指示を解析し、以下の要素を個別に生成・合成してスライド画像を作成します：
 
 - **背景（Background）**: Gemini による画像生成
-- **イラスト（Illustration）**: Pillow による幾何学シェイプ描画（透過PNG）
-- **タイトル（Title）**: Pillow によるテキスト描画（透過PNG）
-- **サブタイトル（Subtitle）**: Pillow によるテキスト描画（透過PNG）
+- **イラスト（Illustration）**: 幾何学シェイプ描画（SVG / Pillow）
+- **タイトル（Title）**: テキスト描画（SVG / Pillow）
+- **サブタイトル（Subtitle）**: テキスト描画（SVG / Pillow）
+
+## 出力形式
+
+PNG画像とSVGの両方を出力します：
+
+- **PNG出力**: 最終合成画像（編集不可）
+- **SVG出力**: 編集可能なベクター形式（Adobe Illustrator対応）
+
+SVG出力により、AI生成後もIllustratorで個別要素の編集が可能です。
 
 ## 動作モード
 
@@ -76,18 +85,25 @@ result = agent.generate(
 
 ## 出力
 
-生成された画像は `output/` フォルダに保存されます：
+生成されたファイルは以下のフォルダに保存されます：
 
 ```
-output/
-  background/   # 背景画像
-  illustration/ # イラスト（透過PNG）
-  title/        # タイトル（透過PNG）
-  subtitle/     # サブタイトル（透過PNG）
-  result/       # 最終合成画像
+output/                 # PNG画像
+  background/           # 背景画像
+  illustration/         # イラスト（透過PNG）
+  title/                # タイトル（透過PNG）
+  subtitle/             # サブタイトル（透過PNG）
+  result/               # 最終合成画像
+
+output_svg/             # SVGファイル（編集可能）
+  background/           # 背景SVG（vtracer変換）
+  illustration/         # イラストSVG
+  title/                # タイトルSVG
+  subtitle/             # サブタイトルSVG
+  result/               # 最終合成SVG（Illustrator対応）
 ```
 
-各画像はセッションID（例: `SYV4-1867.png`）で管理されます。
+各ファイルはセッションID（例: `SYV4-1867.png`、`SYV4-1867.svg`）で管理されます。
 
 ## ドキュメント
 
@@ -105,14 +121,22 @@ nanobanana-to-pptx/
     designer_agent.py    # メインエージェント
     test_agent.py        # テスト用スクリプト
     tools/
+      # PNG生成ツール
       text_to_background.py   # 背景生成（text-to-image）
       image_to_background.py  # 背景生成（image-to-image）
       draw_illustration.py    # イラスト描画（Pillow）
       text_to_title.py        # タイトル描画
       text_to_subtitle.py     # サブタイトル描画
-      compose_slide.py        # 合成ツール
+      compose_slide.py        # PNG合成ツール
       jp_fonts.py             # 日本語フォント設定
-  output/                # 生成画像の出力先
+      # SVG生成ツール
+      image_to_svg.py         # 画像→SVG変換（vtracer）
+      draw_illustration_svg.py # イラストSVG生成
+      text_to_title_svg.py    # タイトルSVG生成
+      text_to_subtitle_svg.py # サブタイトルSVG生成
+      compose_slide_svg.py    # SVG合成（Illustrator対応）
+  output/                # PNG画像の出力先
+  output_svg/            # SVGファイルの出力先
   docs/                  # ドキュメント
 ```
 
@@ -120,7 +144,9 @@ nanobanana-to-pptx/
 
 - **Strands Agents**: エージェントフレームワーク
 - **Google Gemini API**: 画像生成（gemini-2.5-flash-image）、設計解析（gemini-2.0-flash）
-- **Pillow**: テキスト描画、シェイプ描画、画像合成
+- **Pillow**: テキスト描画、シェイプ描画、画像合成（PNG）
+- **vtracer**: ラスター画像→SVGベクター変換
+- **SVG**: 編集可能なベクター出力（Adobe Illustrator対応）
 
 ## ライセンス
 

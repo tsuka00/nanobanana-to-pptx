@@ -10,7 +10,8 @@ CANVAS_WIDTH = 1920
 CANVAS_HEIGHT = 1080
 
 # フォントファミリー（SVG用）
-FONT_FAMILY = "Noto Sans CJK JP, Noto Sans JP, sans-serif"
+# Illustrator互換性のため、シンプルなフォント名を使用
+FONT_FAMILY = "Hiragino Sans"
 
 
 def escape_xml(text: str) -> str:
