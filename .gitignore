@@ -8,6 +8,10 @@ node_modules/
 # Output
 training/*/output/
 tests/output/
+output/
+output_design/
+output_parse_image/
+output_svg/
 
 # OS
 .DS_Store

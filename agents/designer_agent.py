@@ -45,80 +45,212 @@ load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.dirname(__file__)),
 OUTPUT_DIR = Path(__file__).parent.parent / "output"
 OUTPUT_SVG_DIR = Path(__file__).parent.parent / "output_svg"
 OUTPUT_PARSE_IMAGE_DIR = Path(__file__).parent.parent / "output_parse_image"
+OUTPUT_DESIGN_DIR = Path(__file__).parent.parent / "output_design"
 
 # 設計フェーズ用のモデル
 DESIGN_MODEL = "gemini-2.0-flash"
 
+# Reasoning フェーズ用プロンプト
+REASONING_PROMPT = """あなたは優秀なビジュアルデザイナーです。
+ユーザーの指示を深く分析し、最適なデザインを考えてください。
+
+## 分析してください：
+
+1. **意図の理解**
+   - ユーザーは何を伝えたいのか？
+   - このスライドの目的は？（プレゼン、告知、教育など）
+
+2. **ターゲット**
+   - 誰に向けたデザインか？
+   - フォーマルか、カジュアルか？
+
+3. **雰囲気・トーン**
+   - どんなムードが適切か？（モダン、温かい、力強い、シンプル、華やか等）
+   - 色のトーンは？（暖色系、寒色系、モノトーン等）
+
+4. **レイアウトの検討**
+   - テキストの配置はどこが効果的か？
+   - 視線の流れをどう設計するか？
+   - 余白のバランスは？
+
+5. **ビジュアル要素**
+   - 背景はどんなイメージが合うか？
+   - 装飾的なシェイプは必要か？どんな形・色？
+   - コントラストは十分か？
+
+6. **テキストスタイル**
+   - タイトルのフォントは？（ゴシック系、明朝系、丸ゴシック等）
+   - タイトルの色は？（単色、グラデーション）
+   - フォントの太さは？（normal、bold、light）
+   - サブタイトルとのバランスは？
+
+7. **テキストエフェクト**（以下のプリセットから選択）
+   - flat: シンプルな単色（ビジネス、フォーマル向け）
+   - shadow: ドロップシャドウ付き（可読性重視）
+   - **3d-metallic: ホログラム/メタリック/3D風（★推奨：立体感、光沢、虹色反射が必要な場合はこれを使う）**
+   - neon-glow: ネオン発光（テクノロジー、エンタメ）
+   - glass: ガラス風透明感（洗練、クリーン）
+   - outline: アウトライン（カジュアル、ポップ）
+   - gold: ゴールドメタリック（高級感、祝い事）
+   - silver: シルバーメタリック（クール、先進的）
+   - emboss: エンボス/浮き彫り（伝統的、重厚感）
+   - gradient: 単純な2色グラデーション（3d-metallicほどリッチではない）
+
+   **重要**: ホログラム、メタリック、チューブ形状、立体的な表現が求められる場合は必ず `3d-metallic` を選択。
+   `gradient`は単純な色変化のみで立体感はない。
+
+8. **複数の選択肢**
+   - アプローチA: ...
+   - アプローチB: ...
+   - 推奨: ...とその理由
+
+思考過程を詳しく出力してください。最後に「推奨アプローチ」を明記してください。
+"""
+
 DESIGN_SYSTEM_PROMPT = """あなたは画像デザインの設計者です。
-ユーザーの指示を解析し、以下のJSON形式で設計を出力してください。
+事前のデザイン分析（Reasoning）の結果を踏まえて、最適な設計JSONを出力してください。
 JSONのみを出力し、他のテキストは含めないでください。
 
 キャンバスサイズは 1920x1080 (16:9) です。
 
+## JSON形式
+
 {
   "background": {
-    "prompt": "背景画像の生成プロンプト"
+    "prompt": "背景画像の詳細な生成プロンプト（シーン、色調、雰囲気を具体的に）"
   },
   "illustration": {
-    "type": "polygon",
-    "points": [[x1, y1], [x2, y2], [x3, y3], ...],
+    "type": "polygon | rectangle | ellipse | triangle",
+    "points": [[x1, y1], [x2, y2], ...],
+    "fill": {
+      "type": "solid | gradient",
+      "color": "#色（solidの場合）",
+      "start": "#開始色（gradientの場合）",
+      "end": "#終了色（gradientの場合）",
+      "direction": "vertical | horizontal | diagonal"
+    },
+    "opacity": 0.0-1.0
+  },
+  "title": {
+    "text": "タイトル",
+    "x": X座標,
+    "y": Y座標,
+    "fontSize": サイズ,
+    "fontFamily": "フォント名",
+    "fontWeight": "normal | bold | light",
+    "style": "flat | shadow | 3d-metallic | neon-glow | glass | outline | gold | silver | emboss | gradient",
+    "color": "#色（flat/outline/emboss用）",
+    "glowColor": "#色（neon-glow用、オプション）",
     "fill": {
       "type": "gradient",
       "start": "#開始色",
       "end": "#終了色",
-      "direction": "diagonal"
-    },
-    "opacity": 1.0
-  },
-  "title": {
-    "text": "タイトルテキスト",
-    "x": X座標（中心基準）,
-    "y": Y座標（中心基準）,
-    "fontSize": フォントサイズ,
-    "color": "文字色"
+      "direction": "vertical | horizontal | diagonal"
+    }
   },
   "subtitle": {
-    "text": "サブタイトルテキスト",
-    "x": X座標（中心基準）,
-    "y": Y座標（中心基準）,
-    "fontSize": フォントサイズ,
-    "color": "文字色"
+    "text": "サブタイトル",
+    "x": X座標,
+    "y": Y座標,
+    "fontSize": サイズ,
+    "fontFamily": "フォント名",
+    "fontWeight": "normal | bold | light",
+    "style": "flat | shadow | 3d-metallic | neon-glow | glass | outline | gold | silver | emboss | gradient",
+    "color": "#色（flat/outline/emboss用）",
+    "glowColor": "#色（neon-glow用、オプション）",
+    "fill": {
+      "type": "gradient",
+      "start": "#開始色",
+      "end": "#終了色",
+      "direction": "vertical | horizontal | diagonal"
+    }
   }
 }
 
-重要なルール:
+## ルール
+
+- Reasoningで推奨されたアプローチに従う
 - ユーザーが指示していない要素は null にする
-- 背景は必ず指定する（背景なしの場合も白背景を指定）
-- タイトル/サブタイトルの座標はテキストの中心位置を指定する
-- 座標は 0-1920 (x) と 0-1080 (y) の範囲で指定
+- 背景のpromptは具体的に（色、雰囲気、質感、光の方向なども含める）
+- テキストと背景のコントラストを確保する
+- illustrationは単一のオブジェクトとして返す（配列ではなく、1つのシェイプのみ）
+- 複数の装飾が必要な場合は、背景promptに含めるか、illustrationで代表的な1つを選ぶ
 
-illustration（幾何学シェイプ）の指定方法:
-- type: "polygon"（多角形）, "rectangle"（矩形）, "triangle"（三角形）, "ellipse"（楕円）
-- points: 多角形の頂点座標のリスト [[x1,y1], [x2,y2], ...]
-- fill.type: "solid"（単色）または "gradient"（グラデーション）
-- fill.color: 単色の場合の色
-- fill.start, fill.end: グラデーションの開始色と終了色
-- fill.direction: "vertical"（縦）, "horizontal"（横）, "diagonal"（斜め）
-- opacity: 不透明度 0.0-1.0
+## スタイル選択ガイド（重要）
 
-シェイプの例（左下から斜めに覆う形）:
-"points": [[0, 400], [0, 1080], [800, 1080], [400, 400]]
+| ユーザーの要望 | 選ぶべきstyle |
+|--------------|--------------|
+| ホログラム、メタリック、3D、立体、チューブ形状、光沢 | **3d-metallic** |
+| 発光、ネオン、サイバー | neon-glow |
+| 高級感、ゴールド | gold |
+| クール、シルバー | silver |
+| 単純な色変化のみ | gradient |
+| シンプル、ビジネス | flat |
 
-座標の目安（1920x1080）:
-- 中央: x=960, y=540
-- タイトル（中央上部）: x=960, y=400
-- サブタイトル（タイトル下）: x=960, y=500
-- 左寄せ: x=200
-- 右寄せ: x=1720
+**注意**: 「ホログラム」「メタリック」「立体的」などの指示がある場合、`gradient`ではなく必ず`3d-metallic`を選択すること。
 
-fontSize の目安:
-- メインタイトル: 64-80
-- サブタイトル: 36-48
-- キャプション: 24-32
+## レイアウトのバリエーション
 
-color:
-- 暗い背景には "#ffffff"（白）
-- 明るい背景には "#000000"（黒）
+単調にならないよう、状況に応じて多様なレイアウトを検討:
+
+- **中央配置**: タイトル中央、バランス重視
+- **左寄せ**: タイトル左側、右に余白→動きのある印象
+- **右寄せ**: タイトル右側、左にシェイプ
+- **上部配置**: タイトル上部、下に余白→安定感
+- **下部配置**: タイトル下部→インパクト
+- **斜め配置**: シェイプで斜めのラインを作る→動的
+
+## シェイプの活用
+
+- 必須ではない。デザインに必要な場合のみ使用
+- 視線誘導や区切りとして効果的に配置
+- 背景とのコントラストを考慮
+
+## 座標参考（1920x1080）
+
+| 位置 | x | y |
+|------|-----|-----|
+| 中央 | 960 | 540 |
+| 左上 | 200 | 200 |
+| 右下 | 1720 | 880 |
+
+## フォントファミリー
+
+| フォント | 用途 |
+|----------|------|
+| Hiragino Sans | モダン、クリーン（デフォルト） |
+| Hiragino Mincho | フォーマル、伝統的 |
+| Hiragino Maru Gothic | 親しみやすい、カジュアル |
+| Helvetica Neue | 欧文、モダン |
+| Arial | 欧文、汎用 |
+
+## テキストスタイルの指針
+
+- **単色（solid）**: シンプルで読みやすい。背景とのコントラストを確保
+- **グラデーション（gradient）**: インパクトが必要な場合。背景がシンプルな時に効果的
+- **fontWeight**:
+  - bold: 強調したい時（タイトル向き）
+  - normal: バランス重視
+  - light: 繊細、エレガントな印象
+"""
+
+# 修正フェーズ用プロンプト
+REFINE_PROMPT = """あなたは画像デザインの設計者です。
+既存の設計JSONに対して、ユーザーのフィードバックを反映した修正版を出力してください。
+
+## 現在の設計
+{current_design}
+
+## ユーザーのフィードバック
+{feedback}
+
+## 指示
+
+1. フィードバックを分析し、どの要素を変更すべきか特定してください
+2. 変更が必要な要素のみ更新し、他はそのまま維持してください
+3. 修正後の完全なJSONを出力してください（変更箇所だけでなく全体を出力）
+
+JSONのみを出力してください。
 """
 
 
@@ -132,6 +264,34 @@ def save_image(image_base64: str, folder: str, session_id: str) -> str:
         f.write(image_data)
 
     return str(output_path)
+
+
+def save_design(design: dict, session_id: str, reasoning: Optional[str] = None) -> str:
+    """設計JSONを保存してパスを返す"""
+    output_path = OUTPUT_DESIGN_DIR / f"{session_id}.json"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # 設計JSONとreasoningをまとめて保存
+    data = {
+        "session_id": session_id,
+        "design": design,
+        "reasoning": reasoning
+    }
+
+    with open(output_path, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+    return str(output_path)
+
+
+def load_design(session_id: str) -> Optional[dict]:
+    """保存された設計JSONを読み込む"""
+    design_path = OUTPUT_DESIGN_DIR / f"{session_id}.json"
+    if not design_path.exists():
+        return None
+
+    with open(design_path, 'r', encoding='utf-8') as f:
+        return json.load(f)
 
 
 def save_svg(svg_content: str, folder: str, session_id: str) -> str:
@@ -180,9 +340,49 @@ class DesignerAgent:
         image_bytes = base64.b64decode(image_base64)
         return Image.open(io.BytesIO(image_bytes))
 
+    def _reason(
+        self,
+        user_prompt: str,
+        input_image: Optional[str] = None,
+        nanobanana_image: Optional[str] = None
+    ) -> str:
+        """ユーザーのプロンプトを深く分析してデザイン方針を決定
+
+        Args:
+            user_prompt: ユーザーの自然言語指示
+            input_image: ユーザー入力画像のBase64（オプション）
+            nanobanana_image: nanobanana前処理で生成した画像のBase64（オプション）
+
+        Returns:
+            str: 分析結果（reasoning）
+        """
+        contents: List = []
+
+        text_prompt = REASONING_PROMPT + "\n\n## ユーザーの指示\n" + user_prompt
+
+        # 画像がある場合は参照情報を追加
+        if input_image or nanobanana_image:
+            text_prompt += "\n\n## 参考画像あり\n画像も考慮してデザインを検討してください。"
+
+        contents.append(text_prompt)
+
+        # 画像をコンテンツに追加
+        if input_image:
+            contents.append(self._base64_to_pil(input_image))
+        if nanobanana_image:
+            contents.append(self._base64_to_pil(nanobanana_image))
+
+        response = self.client.models.generate_content(
+            model=DESIGN_MODEL,
+            contents=contents
+        )
+
+        return response.text
+
     def _parse_design(
         self,
         user_prompt: str,
+        reasoning: Optional[str] = None,
         input_image: Optional[str] = None,
         nanobanana_image: Optional[str] = None
     ) -> dict:
@@ -190,6 +390,7 @@ class DesignerAgent:
 
         Args:
             user_prompt: ユーザーの自然言語指示
+            reasoning: 事前のデザイン分析結果
             input_image: ユーザー入力画像のBase64（オプション）
             nanobanana_image: nanobanana前処理で生成した画像のBase64（オプション）
         """
@@ -197,7 +398,11 @@ class DesignerAgent:
         contents: List = []
 
         # システムプロンプト + ユーザー指示
-        text_prompt = DESIGN_SYSTEM_PROMPT + "\n\nユーザーの指示: " + user_prompt
+        text_prompt = DESIGN_SYSTEM_PROMPT + "\n\n## ユーザーの指示\n" + user_prompt
+
+        # Reasoning結果がある場合は追加
+        if reasoning:
+            text_prompt += "\n\n## デザイン分析（Reasoning）\n" + reasoning
 
         # 画像がある場合は参照情報を追加
         image_descriptions = []
@@ -274,8 +479,18 @@ class DesignerAgent:
             print("  [Step 1] 背景: スキップ")
 
         # 2. イラスト生成（Pillow描画 + SVG）
-        illust = design.get("illustration")
-        if illust and illust.get("type"):
+        illust_data = design.get("illustration")
+
+        # 配列の場合は最初の要素を使用（後方互換性）
+        # TODO: 将来的には複数イラストレーションの合成に対応
+        if isinstance(illust_data, list):
+            illust = illust_data[0] if illust_data else None
+            if len(illust_data) > 1:
+                print(f"  [Note] {len(illust_data)}個のイラストが指定されましたが、現在は最初の1つのみ使用します")
+        else:
+            illust = illust_data
+
+        if illust and isinstance(illust, dict) and illust.get("type"):
             shape_type = illust.get("type", "polygon")
             print(f"  [Step 2] イラスト生成: {shape_type}...")
 
@@ -303,34 +518,51 @@ class DesignerAgent:
         if title and title.get("text"):
             print(f"  [Step 3] タイトル生成: {title['text'][:30]}...")
 
-            # PNG版
+            # fillの処理（後方互換性: colorも受け付ける）
+            title_fill = title.get("fill")
+            if title_fill is None and title.get("color"):
+                title_fill = title.get("color")
+
+            # PNG版（単色のみ対応）
+            title_color = "#ffffff"
+            if isinstance(title_fill, str):
+                title_color = title_fill
+            elif isinstance(title_fill, dict):
+                title_color = title_fill.get("color", title_fill.get("start", "#ffffff"))
+
             result = _text_to_title._tool_func(
                 text=title["text"],
                 x=title.get("x", 960),
                 y=title.get("y", 400),
                 font_size=title.get("fontSize", 64),
-                color=title.get("color", "#ffffff")
+                color=title_color
             )
             if result.get("success"):
                 elements["title"] = result["image_base64"]
                 path = save_image(result["image_base64"], "title", self.session_id)
                 steps.append(f"タイトルを生成: {path}")
 
-            # SVG版（直接生成）
+            # SVG版（スタイルプリセット対応）
+            title_style = title.get("style", "flat")
             svg_result = _text_to_title_svg._tool_func(
                 text=title["text"],
                 x=title.get("x", 960),
                 y=title.get("y", 400),
                 font_size=title.get("fontSize", 64),
-                color=title.get("color", "#ffffff")
+                font_family=title.get("fontFamily"),
+                font_weight=title.get("fontWeight", "bold"),
+                color=title.get("color", title_color),
+                style=title_style,
+                fill=title_fill,
+                glow_color=title.get("glowColor")
             )
             if svg_result.get("success"):
                 svg_elements["title"] = svg_result["svg"]
                 svg_path = save_svg(svg_result["svg"], "title", self.session_id)
-                steps.append(f"タイトルSVGを生成: {svg_path}")
+                steps.append(f"タイトルSVGを生成 (style={title_style}): {svg_path}")
             else:
-                print(f"  [Error] タイトル生成失敗: {result.get('error')}")
-                steps.append(f"タイトル生成に失敗: {result.get('error')}")
+                print(f"  [Error] タイトル生成失敗: {svg_result.get('error')}")
+                steps.append(f"タイトル生成に失敗: {svg_result.get('error')}")
         else:
             print("  [Step 3] タイトル: スキップ")
 
@@ -339,34 +571,51 @@ class DesignerAgent:
         if subtitle and subtitle.get("text"):
             print(f"  [Step 4] サブタイトル生成: {subtitle['text'][:30]}...")
 
-            # PNG版
+            # fillの処理（後方互換性: colorも受け付ける）
+            subtitle_fill = subtitle.get("fill")
+            if subtitle_fill is None and subtitle.get("color"):
+                subtitle_fill = subtitle.get("color")
+
+            # PNG版（単色のみ対応）
+            subtitle_color = "#ffffff"
+            if isinstance(subtitle_fill, str):
+                subtitle_color = subtitle_fill
+            elif isinstance(subtitle_fill, dict):
+                subtitle_color = subtitle_fill.get("color", subtitle_fill.get("start", "#ffffff"))
+
             result = _text_to_subtitle._tool_func(
                 text=subtitle["text"],
                 x=subtitle.get("x", 960),
                 y=subtitle.get("y", 500),
                 font_size=subtitle.get("fontSize", 36),
-                color=subtitle.get("color", "#ffffff")
+                color=subtitle_color
             )
             if result.get("success"):
                 elements["subtitle"] = result["image_base64"]
                 path = save_image(result["image_base64"], "subtitle", self.session_id)
                 steps.append(f"サブタイトルを生成: {path}")
 
-            # SVG版（直接生成）
+            # SVG版（スタイルプリセット対応）
+            subtitle_style = subtitle.get("style", "flat")
             svg_result = _text_to_subtitle_svg._tool_func(
                 text=subtitle["text"],
                 x=subtitle.get("x", 960),
                 y=subtitle.get("y", 500),
                 font_size=subtitle.get("fontSize", 36),
-                color=subtitle.get("color", "#ffffff")
+                font_family=subtitle.get("fontFamily"),
+                font_weight=subtitle.get("fontWeight", "normal"),
+                color=subtitle.get("color", subtitle_color),
+                style=subtitle_style,
+                fill=subtitle_fill,
+                glow_color=subtitle.get("glowColor")
             )
             if svg_result.get("success"):
                 svg_elements["subtitle"] = svg_result["svg"]
                 svg_path = save_svg(svg_result["svg"], "subtitle", self.session_id)
-                steps.append(f"サブタイトルSVGを生成: {svg_path}")
+                steps.append(f"サブタイトルSVGを生成 (style={subtitle_style}): {svg_path}")
             else:
-                print(f"  [Error] サブタイトル生成失敗: {result.get('error')}")
-                steps.append(f"サブタイトル生成に失敗: {result.get('error')}")
+                print(f"  [Error] サブタイトル生成失敗: {svg_result.get('error')}")
+                steps.append(f"サブタイトル生成に失敗: {svg_result.get('error')}")
         else:
             print("  [Step 4] サブタイトル: スキップ")
 
@@ -426,7 +675,8 @@ class DesignerAgent:
         self,
         user_prompt: str,
         image_base64: Optional[str] = None,
-        use_nanobanana: bool = True
+        use_nanobanana: bool = True,
+        use_reasoning: bool = True
     ) -> dict:
         """
         ユーザーの指示から画像を生成
@@ -436,6 +686,7 @@ class DesignerAgent:
             image_base64: 入力画像のBase64データ（オプション）
                           指定すると image-to-image モードで動作
             use_nanobanana: nanobanana前処理を使用するか（デフォルト: True）
+            use_reasoning: reasoningフェーズを使用するか（デフォルト: True）
 
         Returns:
             dict: 生成結果
@@ -443,12 +694,20 @@ class DesignerAgent:
         try:
             steps = []
             nanobanana_image: Optional[str] = None
+            reasoning: Optional[str] = None
 
             # Phase 0: Nanobanana 前処理
             if use_nanobanana:
                 print("\n[Phase 0] Nanobanana 前処理...")
                 print(f"  プロンプト: {user_prompt[:50]}...")
-                nanobanana_result = _text_to_image._tool_func(prompt=user_prompt)
+                if image_base64:
+                    print("  参照画像あり: 構造・スタイルを参考に生成")
+
+                # 参照画像がある場合は一緒に渡す
+                nanobanana_result = _text_to_image._tool_func(
+                    prompt=user_prompt,
+                    reference_image_base64=image_base64
+                )
 
                 if nanobanana_result.get("success"):
                     nanobanana_image = nanobanana_result["image_base64"]
@@ -460,14 +719,30 @@ class DesignerAgent:
                     print(f"  [Warning] Nanobanana前処理に失敗: {nanobanana_result.get('error')}")
                     steps.append(f"Nanobanana前処理に失敗（続行）: {nanobanana_result.get('error')}")
 
-            # Phase 1: 設計（マルチモーダル）
-            print("\n[Phase 1] プロンプトを解析中...")
+            # Phase 1a: Reasoning（デザイン分析）
+            if use_reasoning:
+                print("\n[Phase 1a] デザイン分析（Reasoning）...")
+                reasoning = self._reason(
+                    user_prompt,
+                    input_image=image_base64,
+                    nanobanana_image=nanobanana_image
+                )
+                print(f"  分析結果:\n{reasoning[:500]}..." if len(reasoning) > 500 else f"  分析結果:\n{reasoning}")
+                steps.append("デザイン分析完了")
+
+            # Phase 1b: 設計（マルチモーダル）
+            print("\n[Phase 1b] 設計JSON生成中...")
             design = self._parse_design(
                 user_prompt,
+                reasoning=reasoning,
                 input_image=image_base64,
                 nanobanana_image=nanobanana_image
             )
             print(f"  設計JSON: {json.dumps(design, ensure_ascii=False, indent=2)}")
+
+            # 設計JSONを保存
+            design_path = save_design(design, self.session_id, reasoning)
+            steps.append(f"設計JSONを保存: {design_path}")
 
             # Phase 2: 実行
             print("\n[Phase 2] 設計を実行中...")
@@ -480,6 +755,7 @@ class DesignerAgent:
                 "success": result.get("success", False),
                 "session_id": self.session_id,
                 "design": design,
+                "reasoning": reasoning,
                 "steps": all_steps,
                 "nanobanana_image": nanobanana_image,
                 "image_base64": result.get("image_base64"),
@@ -497,6 +773,117 @@ class DesignerAgent:
                 "error": str(e),
                 "traceback": traceback.format_exc()
             }
+
+    def refine(
+        self,
+        feedback: str,
+        session_id: Optional[str] = None
+    ) -> dict:
+        """
+        既存の設計を修正して再生成
+
+        Args:
+            feedback: ユーザーのフィードバック（修正指示）
+            session_id: 修正対象のセッションID（省略時は現在のセッション）
+
+        Returns:
+            dict: 生成結果
+        """
+        try:
+            target_session = session_id or self.session_id
+            steps = []
+
+            # 既存の設計を読み込み
+            print(f"\n[Refine] セッション {target_session} の設計を読み込み中...")
+            saved_data = load_design(target_session)
+
+            if not saved_data:
+                return {
+                    "success": False,
+                    "error": f"セッション {target_session} の設計が見つかりません"
+                }
+
+            current_design = saved_data.get("design", {})
+            print(f"  現在の設計: {json.dumps(current_design, ensure_ascii=False)[:200]}...")
+
+            # フィードバックを元に設計を更新
+            print(f"\n[Refine] フィードバックを反映中...")
+            print(f"  フィードバック: {feedback}")
+
+            refine_prompt = REFINE_PROMPT.format(
+                current_design=json.dumps(current_design, ensure_ascii=False, indent=2),
+                feedback=feedback
+            )
+
+            response = self.client.models.generate_content(
+                model=DESIGN_MODEL,
+                contents=[refine_prompt]
+            )
+
+            # JSONを抽出
+            text = response.text
+            json_match = re.search(r'\{[\s\S]*\}', text)
+            if not json_match:
+                return {
+                    "success": False,
+                    "error": f"修正後のJSONを解析できませんでした: {text}"
+                }
+
+            new_design = json.loads(json_match.group())
+            print(f"  修正後の設計: {json.dumps(new_design, ensure_ascii=False, indent=2)}")
+
+            # 変更された要素を特定
+            changes = self._detect_changes(current_design, new_design)
+            print(f"  変更された要素: {changes}")
+            steps.append(f"変更を検出: {', '.join(changes) if changes else 'なし'}")
+
+            # 新しいセッションIDで保存（修正版）
+            self.session_id = self._generate_session_id()
+            design_path = save_design(new_design, self.session_id, reasoning=None)
+            steps.append(f"修正後の設計を保存: {design_path}")
+
+            # 実行
+            print("\n[Refine] 修正後の設計を実行中...")
+            result = self._execute_design(new_design)
+
+            all_steps = steps + result.get("steps", [])
+
+            return {
+                "success": result.get("success", False),
+                "session_id": self.session_id,
+                "previous_session_id": target_session,
+                "design": new_design,
+                "changes": changes,
+                "steps": all_steps,
+                "image_base64": result.get("image_base64"),
+                "svg": result.get("svg"),
+                "result_path": result.get("result_path"),
+                "svg_result_path": result.get("svg_result_path"),
+                "response": "\n".join(all_steps)
+            }
+
+        except Exception as e:
+            import traceback
+            return {
+                "success": False,
+                "session_id": self.session_id,
+                "error": str(e),
+                "traceback": traceback.format_exc()
+            }
+
+    def _detect_changes(self, old_design: dict, new_design: dict) -> List[str]:
+        """設計の変更点を検出"""
+        changes = []
+        elements = ["background", "illustration", "title", "subtitle"]
+
+        for element in elements:
+            old_val = old_design.get(element)
+            new_val = new_design.get(element)
+
+            if old_val != new_val:
+                changes.append(element)
+
+        return changes
 
 
 def main():

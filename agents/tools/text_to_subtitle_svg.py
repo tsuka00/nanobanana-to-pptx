@@ -1,27 +1,18 @@
 """
 Text-to-Subtitle-SVG ツール
-サブタイトルテキストをSVGとして生成
+サブタイトルテキストをSVGとして生成（スタイルプリセット対応）
 """
 
+from typing import Optional, Union, Dict
 from strands import tool
+from .svg_text_styles import generate_styled_text_svg, get_available_styles
 
 # キャンバスサイズ（16:9）
 CANVAS_WIDTH = 1920
 CANVAS_HEIGHT = 1080
 
-# フォントファミリー（SVG用）
-# Illustrator互換性のため、シンプルなフォント名を使用
-FONT_FAMILY = "Hiragino Sans"
-
-
-def escape_xml(text: str) -> str:
-    """XML特殊文字をエスケープ"""
-    return (text
-            .replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-            .replace('"', "&quot;")
-            .replace("'", "&apos;"))
+# デフォルトフォントファミリー
+DEFAULT_FONT_FAMILY = "Hiragino Sans"
 
 
 @tool
@@ -30,19 +21,44 @@ def text_to_subtitle_svg(
     x: int = 960,
     y: int = 500,
     font_size: int = 36,
-    color: str = "#ffffff",
-    font_family: str = None
+    font_family: Optional[str] = None,
+    font_weight: str = "normal",
+    color: Optional[str] = None,
+    style: str = "flat",
+    fill: Optional[Union[str, Dict]] = None,
+    glow_color: Optional[str] = None,
 ) -> dict:
     """
     サブタイトルテキストをSVGとして生成します。
+    スタイルプリセットでリッチな表現が可能です。
 
     Args:
         text: サブタイトルテキスト
         x: X座標（テキスト中心）
         y: Y座標（テキスト中心）
         font_size: フォントサイズ。デフォルト: 36
-        color: 文字色。デフォルト: "#ffffff"
-        font_family: フォントファミリー。デフォルト: Noto Sans CJK JP
+        font_family: フォントファミリー。デフォルト: Hiragino Sans
+        font_weight: フォントの太さ（normal, bold, light）。デフォルト: normal
+        color: 文字色（flat, outline, embossで使用）。デフォルト: #ffffff
+        style: スタイルプリセット名。以下から選択:
+            - flat: シンプルな単色
+            - shadow: ドロップシャドウ
+            - 3d-metallic: 3D風メタリック
+            - neon-glow: ネオン発光
+            - glass: ガラス風透明感
+            - outline: アウトライン
+            - gold: ゴールドメタリック
+            - silver: シルバーメタリック
+            - emboss: エンボス（浮き彫り）
+            - gradient: カスタムグラデーション
+        fill: グラデーション設定（style="gradient"時に使用）
+            {
+                "type": "gradient",
+                "start": "#開始色",
+                "end": "#終了色",
+                "direction": "vertical | horizontal | diagonal"
+            }
+        glow_color: グロー色（style="neon-glow"時に使用）
 
     Returns:
         dict: 生成されたSVGを含む辞書
@@ -51,17 +67,27 @@ def text_to_subtitle_svg(
             - error: エラーメッセージ（失敗時）
     """
     try:
-        font = font_family or FONT_FAMILY
-        escaped_text = escape_xml(text)
+        font = font_family or DEFAULT_FONT_FAMILY
+        text_color = color or "#ffffff"
 
-        svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="{CANVAS_WIDTH}" height="{CANVAS_HEIGHT}" viewBox="0 0 {CANVAS_WIDTH} {CANVAS_HEIGHT}">
-  <text x="{x}" y="{y}"
-        font-family="{font}"
-        font-size="{font_size}"
-        fill="{color}"
-        text-anchor="middle"
-        dominant-baseline="middle">{escaped_text}</text>
-</svg>'''
+        # fillからカスタムグラデーション設定を取得
+        custom_gradient = None
+        if fill and isinstance(fill, dict) and fill.get("type") == "gradient":
+            custom_gradient = fill
+
+        # スタイル付きSVGを生成
+        svg = generate_styled_text_svg(
+            text=text,
+            x=x,
+            y=y,
+            font_size=font_size,
+            font_family=font,
+            font_weight=font_weight,
+            style=style,
+            color=text_color,
+            custom_gradient=custom_gradient,
+            custom_glow_color=glow_color,
+        )
 
         return {
             "success": True,
