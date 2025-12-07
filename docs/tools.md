@@ -295,27 +295,17 @@ result = text_to_title._tool_func(
 
 ### image_to_svg
 
-ラスター画像をSVGベクターに変換します。
+ラスター画像をSVG内に埋め込みます。
 
 **ファイル**: `agents/tools/image_to_svg.py`
-
-**使用ライブラリ**: vtracer
 
 **引数**:
 
 | 引数名 | 型 | 必須 | デフォルト | 説明 |
 |--------|-----|------|------------|------|
-| image_base64 | str | 必須 | - | 変換する画像のBase64データ |
-| colormode | str | 任意 | "color" | 色モード（color / binary） |
-| quality | str | 任意 | "balanced" | 品質プリセット（fast / balanced / high） |
-
-**品質プリセット**:
-
-| プリセット | 説明 |
-|------------|------|
-| fast | 高速変換、粗いパス |
-| balanced | バランス重視（推奨） |
-| high | 高精度、詳細なパス |
+| image_base64 | str | 必須 | - | 埋め込む画像のBase64データ |
+| width | int | 任意 | 1920 | SVGの幅 |
+| height | int | 任意 | 1080 | SVGの高さ |
 
 **戻り値**:
 
@@ -327,9 +317,9 @@ result = text_to_title._tool_func(
 ```
 
 **仕様**:
-- vtracer を使用してラスター画像をベクターパスに変換
-- 編集可能なSVGパスを出力
-- 背景画像のSVG変換に使用
+- 画像をそのままSVG内に埋め込み（品質劣化なし）
+- 背景画像の再生成で対応するため、ベクター変換は行わない
+- `preserveAspectRatio="xMidYMid slice"` でアスペクト比を維持
 
 ---
 

@@ -7,10 +7,15 @@ import os
 import json
 import base64
 import re
+import io
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 from dotenv import load_dotenv
 from google import genai  # type: ignore
+from PIL import Image
+
+# Nanobanana 画像生成（前処理）
+from .tools.text_to_image import text_to_image as _text_to_image
 
 # Text-to-* ツール（新規生成）
 from .tools.text_to_background import text_to_background as _text_to_background
@@ -39,6 +44,7 @@ load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.dirname(__file__)),
 # 出力ディレクトリ
 OUTPUT_DIR = Path(__file__).parent.parent / "output"
 OUTPUT_SVG_DIR = Path(__file__).parent.parent / "output_svg"
+OUTPUT_PARSE_IMAGE_DIR = Path(__file__).parent.parent / "output_parse_image"
 
 # 設計フェーズ用のモデル
 DESIGN_MODEL = "gemini-2.0-flash"
@@ -139,6 +145,18 @@ def save_svg(svg_content: str, folder: str, session_id: str) -> str:
     return str(output_path)
 
 
+def save_parse_image(image_base64: str, session_id: str) -> str:
+    """前処理画像を保存してパスを返す"""
+    output_path = OUTPUT_PARSE_IMAGE_DIR / f"{session_id}.png"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    image_data = base64.b64decode(image_base64)
+    with open(output_path, 'wb') as f:
+        f.write(image_data)
+
+    return str(output_path)
+
+
 class DesignerAgent:
     """画像デザインを生成するエージェント（要素別生成版）"""
 
@@ -157,13 +175,51 @@ class DesignerAgent:
         chars = string.ascii_uppercase + string.digits
         return ''.join(random.choices(chars, k=4)) + '-' + ''.join(random.choices(string.digits, k=4))
 
-    def _parse_design(self, user_prompt: str) -> dict:
-        """ユーザーのプロンプトをJSON設計に変換"""
-        prompt = DESIGN_SYSTEM_PROMPT + "\n\nユーザーの指示: " + user_prompt
+    def _base64_to_pil(self, image_base64: str) -> Image.Image:
+        """Base64画像をPIL Imageに変換"""
+        image_bytes = base64.b64decode(image_base64)
+        return Image.open(io.BytesIO(image_bytes))
+
+    def _parse_design(
+        self,
+        user_prompt: str,
+        input_image: Optional[str] = None,
+        nanobanana_image: Optional[str] = None
+    ) -> dict:
+        """ユーザーのプロンプトをJSON設計に変換（マルチモーダル対応）
+
+        Args:
+            user_prompt: ユーザーの自然言語指示
+            input_image: ユーザー入力画像のBase64（オプション）
+            nanobanana_image: nanobanana前処理で生成した画像のBase64（オプション）
+        """
+        # コンテンツリストを構築
+        contents: List = []
+
+        # システムプロンプト + ユーザー指示
+        text_prompt = DESIGN_SYSTEM_PROMPT + "\n\nユーザーの指示: " + user_prompt
+
+        # 画像がある場合は参照情報を追加
+        image_descriptions = []
+        if input_image:
+            image_descriptions.append("【ユーザー提供画像】この画像をベースに設計してください。")
+        if nanobanana_image:
+            image_descriptions.append("【AI生成参照画像】この画像のスタイルや雰囲気を参考にしてください。")
+
+        if image_descriptions:
+            text_prompt += "\n\n" + "\n".join(image_descriptions)
+
+        contents.append(text_prompt)
+
+        # 画像をコンテンツに追加
+        if input_image:
+            contents.append(self._base64_to_pil(input_image))
+        if nanobanana_image:
+            contents.append(self._base64_to_pil(nanobanana_image))
 
         response = self.client.models.generate_content(
             model=DESIGN_MODEL,
-            contents=prompt
+            contents=contents
         )
 
         text = response.text
@@ -366,7 +422,12 @@ class DesignerAgent:
                 "steps": steps
             }
 
-    def generate(self, user_prompt: str, image_base64: Optional[str] = None) -> dict:
+    def generate(
+        self,
+        user_prompt: str,
+        image_base64: Optional[str] = None,
+        use_nanobanana: bool = True
+    ) -> dict:
         """
         ユーザーの指示から画像を生成
 
@@ -374,30 +435,58 @@ class DesignerAgent:
             user_prompt: ユーザーの自然言語指示
             image_base64: 入力画像のBase64データ（オプション）
                           指定すると image-to-image モードで動作
+            use_nanobanana: nanobanana前処理を使用するか（デフォルト: True）
 
         Returns:
             dict: 生成結果
         """
         try:
-            # Phase 1: 設計
+            steps = []
+            nanobanana_image: Optional[str] = None
+
+            # Phase 0: Nanobanana 前処理
+            if use_nanobanana:
+                print("\n[Phase 0] Nanobanana 前処理...")
+                print(f"  プロンプト: {user_prompt[:50]}...")
+                nanobanana_result = _text_to_image._tool_func(prompt=user_prompt)
+
+                if nanobanana_result.get("success"):
+                    nanobanana_image = nanobanana_result["image_base64"]
+                    # 前処理画像を保存
+                    nanobanana_path = save_parse_image(nanobanana_image, self.session_id)
+                    steps.append(f"Nanobanana前処理画像を生成: {nanobanana_path}")
+                    print(f"  前処理画像を生成: {nanobanana_path}")
+                else:
+                    print(f"  [Warning] Nanobanana前処理に失敗: {nanobanana_result.get('error')}")
+                    steps.append(f"Nanobanana前処理に失敗（続行）: {nanobanana_result.get('error')}")
+
+            # Phase 1: 設計（マルチモーダル）
             print("\n[Phase 1] プロンプトを解析中...")
-            design = self._parse_design(user_prompt)
+            design = self._parse_design(
+                user_prompt,
+                input_image=image_base64,
+                nanobanana_image=nanobanana_image
+            )
             print(f"  設計JSON: {json.dumps(design, ensure_ascii=False, indent=2)}")
 
             # Phase 2: 実行
             print("\n[Phase 2] 設計を実行中...")
             result = self._execute_design(design, input_image=image_base64)
 
+            # ステップをマージ
+            all_steps = steps + result.get("steps", [])
+
             return {
                 "success": result.get("success", False),
                 "session_id": self.session_id,
                 "design": design,
-                "steps": result.get("steps", []),
+                "steps": all_steps,
+                "nanobanana_image": nanobanana_image,
                 "image_base64": result.get("image_base64"),
                 "svg": result.get("svg"),
                 "result_path": result.get("result_path"),
                 "svg_result_path": result.get("svg_result_path"),
-                "response": "\n".join(result.get("steps", []))
+                "response": "\n".join(all_steps)
             }
 
         except Exception as e:

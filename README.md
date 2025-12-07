@@ -95,12 +95,12 @@ output/                 # PNG画像
   subtitle/             # サブタイトル（透過PNG）
   result/               # 最終合成画像
 
-output_svg/             # SVGファイル（編集可能）
-  background/           # 背景SVG（vtracer変換）
-  illustration/         # イラストSVG
-  title/                # タイトルSVG
-  subtitle/             # サブタイトルSVG
-  result/               # 最終合成SVG（Illustrator対応）
+output_svg/             # SVGファイル
+  background/           # 背景SVG（ラスター埋め込み）
+  illustration/         # イラストSVG（編集可能）
+  title/                # タイトルSVG（編集可能）
+  subtitle/             # サブタイトルSVG（編集可能）
+  result/               # 最終合成SVG
 ```
 
 各ファイルはセッションID（例: `SYV4-1867.png`、`SYV4-1867.svg`）で管理されます。
@@ -130,7 +130,7 @@ nanobanana-to-pptx/
       compose_slide.py        # PNG合成ツール
       jp_fonts.py             # 日本語フォント設定
       # SVG生成ツール
-      image_to_svg.py         # 画像→SVG変換（vtracer）
+      image_to_svg.py         # 画像→SVG埋め込み
       draw_illustration_svg.py # イラストSVG生成
       text_to_title_svg.py    # タイトルSVG生成
       text_to_subtitle_svg.py # サブタイトルSVG生成
@@ -145,8 +145,7 @@ nanobanana-to-pptx/
 - **Strands Agents**: エージェントフレームワーク
 - **Google Gemini API**: 画像生成（gemini-2.5-flash-image）、設計解析（gemini-2.0-flash）
 - **Pillow**: テキスト描画、シェイプ描画、画像合成（PNG）
-- **vtracer**: ラスター画像→SVGベクター変換
-- **SVG**: 編集可能なベクター出力（Adobe Illustrator対応）
+- **SVG**: 編集可能なベクター出力（テキスト・シェイプ）
 
 ## ライセンス
 

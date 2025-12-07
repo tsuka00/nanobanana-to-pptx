@@ -109,19 +109,19 @@ Step 6: SVG合成
 
 各要素は PNG と並行して SVG としても生成されます：
 
-| 要素 | PNG生成 | SVG生成 |
-|------|---------|---------|
-| 背景 | Gemini生成画像 | image_to_svg（vtracer変換） |
-| イラスト | draw_illustration（Pillow） | draw_illustration_svg（ネイティブSVG） |
-| タイトル | text_to_title（Pillow） | text_to_title_svg（SVGテキスト） |
-| サブタイトル | text_to_subtitle（Pillow） | text_to_subtitle_svg（SVGテキスト） |
+| 要素 | PNG生成 | SVG生成 | 編集 |
+|------|---------|---------|------|
+| 背景 | Gemini生成画像 | ラスター埋め込み | 再生成で対応 |
+| イラスト | draw_illustration（Pillow） | ネイティブSVG | 編集可能 |
+| タイトル | text_to_title（Pillow） | SVGテキスト | 編集可能 |
+| サブタイトル | text_to_subtitle（Pillow） | SVGテキスト | 編集可能 |
 
-**背景のSVG変換**:
-- AI生成画像（ラスター）を vtracer でベクターパスに変換
-- 編集可能なパスとして出力
+**背景のSVG**:
+- 画像をそのままSVG内に埋め込み（品質劣化なし）
+- 変更が必要な場合は再生成で対応
 
-**テキストのSVG出力**:
-- ネイティブSVGテキスト要素として出力
+**テキスト・シェイプのSVG**:
+- ネイティブSVG要素として出力（編集可能）
 - フォント: Hiragino Sans（Illustrator互換）
 
 ## キャンバス仕様
@@ -182,8 +182,8 @@ output/                     # PNG画像
 └── result/                 # 最終合成画像
     └── SESSION_ID.png
 
-output_svg/                 # SVGファイル（編集可能）
-├── background/             # 背景SVG（vtracer変換）
+output_svg/                 # SVGファイル
+├── background/             # 背景SVG（ラスター埋め込み）
 │   └── SESSION_ID.svg
 ├── illustration/           # イラストSVG
 │   └── SESSION_ID.svg
