@@ -2,6 +2,7 @@
 PPTXを生成するツール
 - 背景/イラスト: 生成された画像を配置
 - テキスト要素: 編集可能なテキストボックスとして配置
+- 図形要素: 四角形、円、線などを配置
 """
 
 import os
@@ -38,8 +39,9 @@ def image_to_pptx(
     Args:
         elements: 要素リスト
             - type="background": 背景画像（image_base64またはfile_pathで指定）
-            - type="illustration": イラスト画像（image_base64またはfile_pathで指定）
+            - type="image": 画像（image_base64またはfile_pathで指定）
             - type="text": テキストボックス（content, style, bboxで指定）
+            - type="shape": 図形（shape, bbox, styleで指定）
         session_id: セッションID
         original_image_base64: 非推奨（後方互換性のため残存）
         output_dir: 出力ディレクトリ（省略時はagent_output/{session_id}）
@@ -67,15 +69,11 @@ def image_to_pptx(
 
         element_files = []
 
-        # 背景を先に、他の要素を後に（テキストは最後）
+        # レイヤー順: 背景 → 画像 → テキスト
         def sort_key(e):
             t = e.get("type", "")
-            if t == "background":
-                return 0
-            elif t == "text":
-                return 2
-            else:
-                return 1
+            order = {"background": 0, "image": 1, "text": 2}
+            return order.get(t, 1)
 
         sorted_elements = sorted(elements, key=sort_key)
 
@@ -98,8 +96,8 @@ def image_to_pptx(
                         prs.slide_width, prs.slide_height
                     )
 
-            else:
-                # イラスト等 → bbox位置に配置
+            elif elem_type == "image":
+                # 画像要素 → bbox位置に配置
                 png_path = _get_image_path(elem, out_dir, elem_id)
                 if png_path:
                     element_files.append(str(png_path))

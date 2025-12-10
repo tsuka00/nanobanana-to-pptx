@@ -1,0 +1,149 @@
+{
+  "description": "デザイン参考画像データセット",
+  "version": "1.0",
+  "categories": [
+    "商品サムネイル",
+    "技術資料サムネイル",
+    "SNS広告バナー",
+    "プレゼン表紙",
+    "イベント告知",
+    "セミナー告知"
+  ],
+  "taste_tags": [
+    "かっこいい", "かわいい", "高級感", "きれいめ", "カジュアル",
+    "にぎやか", "シンプル", "ポップ", "クール", "ナチュラル"
+  ],
+  "images": [
+    {
+      "id": "1764380128_88ed99c9",
+      "filename": "1764380128_88ed99c9.jpg",
+      "category": "商品サムネイル",
+      "size": "1080x1350",
+      "taste": ["かわいい", "高級感", "きれい", "クリスマス", "シズル感", "冬"],
+      "palette": ["レッド", "グリーン"],
+      "rating": "good",
+      "comment": "12月感があっていい",
+      "features": {
+        "layout": "center",
+        "has_product": true,
+        "has_text": true,
+        "text_style": "decorative",
+        "background": "solid-red"
+      }
+    },
+    {
+      "id": "1764379829_df0d1cbe",
+      "filename": "1764379829_df0d1cbe.jpg",
+      "category": "商品サムネイル",
+      "size": "1200x630",
+      "taste": ["かっこいい", "文字組み", "文字だけ", "シンプル", "ロゴ", "作字"],
+      "palette": ["グレー"],
+      "rating": "good",
+      "comment": "design力がいい",
+      "features": {
+        "layout": "center",
+        "has_product": false,
+        "has_text": true,
+        "text_style": "typography",
+        "background": "solid-light-gray"
+      }
+    },
+    {
+      "id": "1754702413_0ef21058",
+      "filename": "1754702413_0ef21058.jpg",
+      "category": "技術資料サムネイル",
+      "size": "1199x630",
+      "taste": ["かわいい", "カジュアル", "にぎやか", "ポップイラスト"],
+      "palette": ["ブルー", "パープル", "グラデーション"],
+      "rating": "good",
+      "comment": "技術系のスライドのサムネイルとしておしゃれ",
+      "features": {
+        "layout": "center",
+        "has_product": false,
+        "has_text": true,
+        "has_illustration": true,
+        "text_style": "rounded",
+        "background": "gradient-blue-purple"
+      }
+    },
+    {
+      "id": "1752910135_aae98341",
+      "filename": "1752910135_aae98341.jpg",
+      "category": "SNS広告バナー",
+      "size": "1200x630",
+      "taste": ["かっこいい", "高級感", "きれいめ", "にぎやか", "ポップ", "人物写真", "切り抜き"],
+      "palette": ["ブルー", "パープル", "グラデーション"],
+      "rating": "good",
+      "comment": "ビジネス系の広告クリエイティブとしてかっこいい",
+      "features": {
+        "layout": "split",
+        "has_product": false,
+        "has_text": true,
+        "has_person": true,
+        "person_style": "cutout",
+        "text_style": "bold-japanese",
+        "background": "gradient-blue-purple-diagonal"
+      }
+    },
+    {
+      "id": "1729899603_3e3960ce",
+      "filename": "1729899603_3e3960ce.png",
+      "category": "SNS広告バナー",
+      "size": "720x378",
+      "taste": ["かっこいい", "文字組み", "文字だけ", "シンプル", "高級感", "きれいめ", "人物写真", "切り抜き"],
+      "palette": ["ゴールド", "グラデーション"],
+      "rating": "good",
+      "comment": "ビジネス系の広告クリエイティブとしてかっこいい",
+      "features": {
+        "layout": "bottom",
+        "has_product": false,
+        "has_text": true,
+        "has_person": true,
+        "person_style": "cutout",
+        "text_style": "bold-gold",
+        "background": "solid-gold-gradient"
+      }
+    },
+    {
+      "id": "1725068678_90f61b32",
+      "filename": "1725068678_90f61b32.jpg",
+      "category": "SNS広告バナー",
+      "size": "1200x630",
+      "taste": ["かっこいい", "高級感", "きれいめ", "にぎやか", "ポップ", "人物写真", "切り抜き"],
+      "palette": ["ブルー", "パープル", "グラデーション"],
+      "rating": "good",
+      "comment": "ビジネス系の広告クリエイティブとしてかっこいい",
+      "features": {
+        "layout": "left",
+        "has_product": false,
+        "has_text": true,
+        "has_person": true,
+        "person_style": "duotone-cutout",
+        "text_style": "bold-japanese",
+        "background": "gradient-blue-purple"
+      }
+    }
+  ],
+  "design_patterns": {
+    "business_ad": {
+      "palette": ["ブルー", "パープル", "グラデーション"],
+      "features": ["人物切り抜き", "太字日本語", "斜めグラデーション"],
+      "examples": ["1752910135_aae98341", "1725068678_90f61b32"]
+    },
+    "tech_slide": {
+      "palette": ["ブルー", "パープル", "パステル"],
+      "features": ["ポップイラスト", "丸みフォント", "アイコン散りばめ"],
+      "examples": ["1754702413_0ef21058"]
+    },
+    "typography": {
+      "palette": ["モノクローム", "グレー"],
+      "features": ["作字", "文字だけ", "シンプル"],
+      "examples": ["1764379829_df0d1cbe"]
+    },
+    "seasonal_product": {
+      "palette": ["季節色", "レッド", "グリーン"],
+      "features": ["商品写真", "シズル感", "装飾文字"],
+      "examples": ["1764380128_88ed99c9"]
+    }
+  }
+}

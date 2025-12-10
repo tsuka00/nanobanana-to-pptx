@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Designer Agent インタラクティブテスト（要素別生成版）
+Designer Agent インタラクティブテスト
 """
 
 import os
@@ -37,21 +37,18 @@ def main():
     agent = DesignerAgent()
     print(f"初期化完了! [Session ID: {agent.session_id}]\n")
 
-    # 画像入力（オプション）
-    print("画像ファイルのパスを入力 (空でtext-to-imageモード):")
+    # 参照画像入力（オプション）
+    print("参照画像のパスを入力 (空でスキップ):")
     image_input = input("> ").strip().strip("'\"")
 
-    image_base64 = None
+    reference_image = None
     if image_input:
         if os.path.exists(image_input):
-            image_base64 = load_image(image_input)
-            print(f"画像を読み込みました: {image_input}")
-            print("モード: image-to-image\n")
+            reference_image = load_image(image_input)
+            print(f"参照画像を読み込みました: {image_input}\n")
         else:
             print(f"ファイルが見つかりません: {image_input}")
             sys.exit(1)
-    else:
-        print("モード: text-to-image\n")
 
     print("=" * 50)
     print("プロンプトを入力してください (空行で実行)")
@@ -80,7 +77,7 @@ def main():
     # 実行
     result = agent.generate(
         user_prompt=user_prompt,
-        image_base64=image_base64
+        reference_image_base64=reference_image
     )
 
     print("\n" + "=" * 50)
@@ -91,11 +88,11 @@ def main():
         print(result.get('response', ''))
 
         if result.get('result_path'):
-            print(f"\n最終結果（PNG）: {result.get('result_path')}")
-        if result.get('svg_result_path'):
-            print(f"最終結果（SVG）: {result.get('svg_result_path')}")
+            print(f"\n背景画像: {result.get('result_path')}")
         if result.get('pptx_result_path'):
-            print(f"最終結果（PPTX）: {result.get('pptx_result_path')}")
+            print(f"PPTX: {result.get('pptx_result_path')}")
+        if result.get('element_files'):
+            print(f"生成ファイル: {len(result.get('element_files'))}件")
     else:
         print(f"Error: {result.get('error')}")
         if result.get('traceback'):

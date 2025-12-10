@@ -1,6 +1,12 @@
 """
 Designer Agent
-自然言語の指示から画像デザインを生成するエージェント（要素別生成版）
+自然言語の指示からスライドデザインを生成するエージェント
+
+フロー:
+1. ユーザープロンプトを分析（Reasoning）
+2. 設計JSONを生成
+3. 各要素を個別に生成（背景、イラスト）
+4. PPTXに統合（テキストは編集可能なテキストボックス）
 """
 
 import os
@@ -15,12 +21,10 @@ from google import genai  # type: ignore
 from google.genai.types import GenerateContentConfig, GoogleSearch, Tool
 from PIL import Image
 
-# Nanobanana 画像生成（前処理）
+# ツール
 from .tools.text_to_image import text_to_image as _text_to_image
-
-# 新フロー用ツール
-from .tools.analyze_image import analyze_image as _analyze_image
 from .tools.image_to_pptx import image_to_pptx as _image_to_pptx
+from .tools.design_references import get_references_summary, search_references
 
 # プリセットシステム
 from .presets import get_preset_summary, LAYOUTS, PALETTES, TONES
@@ -127,173 +131,244 @@ WEB_RESEARCH_PROMPT = """あなたはデザインリサーチャーです。
 {user_prompt}
 """
 
-DESIGN_SYSTEM_PROMPT = """あなたは画像デザインの設計者です。
-事前のデザイン分析（Reasoning）の結果を踏まえて、最適な設計JSONを出力してください。
-JSONのみを出力し、他のテキストは含めないでください。
+DESIGN_SYSTEM_PROMPT = """あなたはプロフェッショナルなスライドデザイナーです。
+ユーザーの指示とデザイン分析（Reasoning）に基づいて、高品質なスライド設計JSONを出力してください。
 
-キャンバスサイズは 1920x1080 (16:9) です。
+## 重要: 動的elements配列方式
+
+必要な要素を自由に追加できます。固定の要素数に縛られません。
+デザインに必要な要素をすべてelements配列に含めてください。
+
+キャンバスサイズ: 1920x1080 (16:9)
 
 ## JSON形式
 
+```json
 {
-  "preset": {
-    "layout": "レイアウト名（省略可）",
-    "palette": "パレット名（省略可）",
-    "tone": "トーン名（省略可）"
-  },
-  "background": {
-    "prompt": "背景画像の生成プロンプト（省略時はパレットのヒントを使用）"
-  },
-  "illustration": {
-    "type": "polygon | rectangle | ellipse | triangle",
-    "points": [[x1, y1], [x2, y2], ...],
-    "fill": {
-      "type": "solid | gradient",
-      "color": "#色（solidの場合、省略時はパレットのアクセント色）",
-      "start": "#開始色（gradientの場合）",
-      "end": "#終了色（gradientの場合）",
-      "direction": "vertical | horizontal | diagonal"
-    },
-    "opacity": 0.0-1.0
-  },
-  "title": {
-    "text": "タイトル",
-    "x": "X座標（省略時はレイアウトのデフォルト）",
-    "y": "Y座標（省略時はレイアウトのデフォルト）",
-    "fontSize": サイズ,
-    "fontFamily": "フォント名",
-    "fontWeight": "normal | bold | light（省略時はトーンのデフォルト）",
-    "style": "flat | shadow | 3d-metallic | neon-glow | glass | outline | gold | silver | emboss | gradient（省略時はパレットの推奨スタイル）",
-    "color": "#色（省略時はパレットのtext_primary）",
-    "glowColor": "#色（neon-glow用、オプション）",
-    "fill": {
-      "type": "gradient",
-      "start": "#開始色（省略時はパレットのアクセント色）",
-      "end": "#終了色（省略時はパレットのtext_primary）",
-      "direction": "vertical | horizontal | diagonal"
+  "meta": {
+    "theme": "テーマ名（tech, business, creative, premium, casual等）",
+    "mood": "雰囲気（energetic, calm, professional, playful等）",
+    "color_scheme": {
+      "primary": "#主要色",
+      "secondary": "#補助色",
+      "accent": "#アクセント色",
+      "background": "#背景色"
     }
   },
-  "subtitle": {
-    "text": "サブタイトル",
-    "x": "X座標（省略時はレイアウトのデフォルト）",
-    "y": "Y座標（省略時はレイアウトのデフォルト）",
-    "fontSize": サイズ,
-    "fontFamily": "フォント名",
-    "fontWeight": "normal | bold | light（省略時はトーンのデフォルト）",
-    "style": "flat | shadow | ... （省略時はflat）",
-    "color": "#色（省略時はパレットのtext_secondary）"
+  "elements": [
+    // 必要な要素を自由に追加
+  ]
+}
+```
+
+## 要素タイプ
+
+### 1. background（背景）- 必須、1つのみ
+```json
+{
+  "type": "background",
+  "prompt": "背景の詳細な叙述的説明。場面を描写するように書く。",
+  "style": {
+    "lighting": "照明の説明（studio-lit, soft diffused, dramatic等）",
+    "color_tone": "色調（warm, cool, neutral等）",
+    "texture": "質感（smooth gradient, subtle noise, geometric patterns等）"
   }
 }
+```
 
-## プリセットシステム
+### 2. image（生成画像）- 複数可
+```json
+{
+  "type": "image",
+  "id": "一意のID",
+  "prompt": "画像の詳細な叙述的説明",
+  "position": {"x": 0, "y": 0, "width": 400, "height": 400},
+  "style": {
+    "type": "illustration | icon | photo | abstract",
+    "details": "スタイルの詳細説明"
+  }
+}
+```
 
-### レイアウトプリセット（preset.layout）
-| 名前 | 説明 | タイトル位置 |
-|------|------|------------|
-| center | 中央配置（デフォルト） | (960, 400) |
-| center-middle | 中央・垂直中央 | (960, 480) |
-| left | 左寄せ | (200, 400) |
-| right | 右寄せ | (1720, 400) |
-| bottom | 下部配置 | (960, 800) |
-| top | 上部配置 | (960, 200) |
-| split-left | 左半分（50:50分割） | (480, 450) |
-| split-right | 右半分（50:50分割） | (1440, 450) |
-| bottom-left | 左下配置 | (200, 800) |
-| bottom-right | 右下配置 | (1720, 800) |
-| overlay | オーバーレイ | (960, 480) |
+### 3. text（テキスト）- 複数可
+```json
+{
+  "type": "text",
+  "id": "一意のID",
+  "content": "表示するテキスト",
+  "position": {"x": 960, "y": 400, "width": 1600, "height": 200},
+  "style": {
+    "fontSize": 80,
+    "fontWeight": "bold | normal | light",
+    "fontStyle": "normal | italic",
+    "color": "#FFFFFF",
+    "align": "center | left | right",
+    "verticalAlign": "top | middle | bottom"
+  }
+}
+```
 
-### 配色パレット（preset.palette）
-| 名前 | 背景 | 用途 |
-|------|------|------|
-| light | #ffffff | 明るい、ビジネス |
-| light-warm | #faf8f5 | 温かみ |
-| light-cool | #f5f9fc | クール |
-| dark | #1a1a1a | モダン |
-| dark-tech | #0a0a0a | テック、サイバー |
-| dark-purple | #1a0a2e | クリエイティブ |
-| monochrome | #f5f5f5 | ミニマル |
-| monochrome-dark | #121212 | ダークミニマル |
-| premium-gold | #1a1a1a | 高級感・ゴールド |
-| premium-silver | #1a1a2e | 高級感・シルバー |
-| vibrant | #ffffff | エネルギッシュ |
-| vibrant-gradient | #667eea | グラデーション背景 |
-| nature | #f5f5dc | 自然・エコ |
-| ocean | #e3f2fd | 海・青系 |
-| corporate | #f8f9fa | 企業向け |
-| corporate-dark | #1e2a3a | 企業向けダーク |
+## 背景プロンプトの書き方（重要）
 
-### トーンプリセット（preset.tone）
-| 名前 | 説明 | 推奨パレット |
-|------|------|------------|
-| professional | ビジネス、信頼感 | corporate, light |
-| creative | アーティスティック | vibrant, dark-purple |
-| tech | 未来的、先進的 | dark-tech, dark |
-| premium | 高級、ラグジュアリー | premium-gold, premium-silver |
-| minimal | シンプル、余白重視 | monochrome, light |
-| energetic | 活発、ダイナミック | vibrant, vibrant-gradient |
-| warm | 温かみ、親しみ | light-warm, nature |
-| cool | クール、知的 | light-cool, ocean |
-| nature | 自然、オーガニック | nature, ocean |
-| playful | 遊び心、楽しさ | vibrant, light-warm |
+キーワード羅列NG。場面を叙述的に描写してください。
+
+### 悪い例
+```
+"prompt": "青いグラデーション、テック、モダン"
+```
+
+### 良い例
+```
+"prompt": "A sleek, modern tech background with a deep blue to purple gradient flowing diagonally across the canvas. Subtle geometric shapes float in the background with soft, diffused lighting creating depth. The overall mood is professional and futuristic, with clean lines and minimal visual noise. Studio-quality finish with smooth color transitions."
+```
+
+## 配色パターン例
+
+| テーマ | primary | secondary | accent | background |
+|--------|---------|-----------|--------|------------|
+| tech-dark | #3B82F6 | #8B5CF6 | #06B6D4 | #0F172A |
+| business | #1E40AF | #3B82F6 | #F59E0B | #F8FAFC |
+| creative | #EC4899 | #8B5CF6 | #F59E0B | #1F2937 |
+| premium | #D4AF37 | #C0C0C0 | #FFD700 | #1A1A1A |
+| nature | #059669 | #10B981 | #FBBF24 | #ECFDF5 |
+
+## デザイン例
+
+### 例1: テック系セミナー告知
+```json
+{
+  "meta": {
+    "theme": "tech",
+    "mood": "professional",
+    "color_scheme": {
+      "primary": "#3B82F6",
+      "secondary": "#8B5CF6",
+      "accent": "#06B6D4",
+      "background": "#0F172A"
+    }
+  },
+  "elements": [
+    {
+      "type": "background",
+      "prompt": "A sophisticated dark tech background featuring a smooth gradient from deep navy blue (#0F172A) to rich purple (#1E1B4B). Abstract geometric shapes - hexagons and flowing lines - subtly emerge from the darkness with a soft cyan glow. The lighting is dramatic yet professional, with highlights creating depth. Clean, modern aesthetic suitable for a technology presentation.",
+      "style": {
+        "lighting": "dramatic with soft cyan accents",
+        "color_tone": "cool, dark",
+        "texture": "smooth gradient with subtle geometric patterns"
+      }
+    },
+    {
+      "type": "text",
+      "id": "title",
+      "content": "AI時代のエンジニアリング",
+      "position": {"x": 960, "y": 380, "width": 1600, "height": 150},
+      "style": {
+        "fontSize": 72,
+        "fontWeight": "bold",
+        "color": "#FFFFFF",
+        "align": "center"
+      }
+    },
+    {
+      "type": "text",
+      "id": "subtitle",
+      "content": "最新技術トレンドと実践的アプローチ",
+      "position": {"x": 960, "y": 520, "width": 1400, "height": 80},
+      "style": {
+        "fontSize": 36,
+        "fontWeight": "normal",
+        "color": "#94A3B8",
+        "align": "center"
+      }
+    },
+    {
+      "type": "text",
+      "id": "date",
+      "content": "2025.01.15 | 19:00 - 21:00",
+      "position": {"x": 960, "y": 650, "width": 600, "height": 50},
+      "style": {
+        "fontSize": 24,
+        "fontWeight": "normal",
+        "color": "#06B6D4",
+        "align": "center"
+      }
+    },
+  ]
+}
+```
+
+**重要**: shape要素は使用しない。装飾が必要な場合は背景画像生成時にプロンプトで指定する。
+
+### 例2: 商品プロモーション
+```json
+{
+  "meta": {
+    "theme": "premium",
+    "mood": "luxurious",
+    "color_scheme": {
+      "primary": "#D4AF37",
+      "secondary": "#1A1A1A",
+      "accent": "#FFD700",
+      "background": "#0D0D0D"
+    }
+  },
+  "elements": [
+    {
+      "type": "background",
+      "prompt": "An elegant, luxurious dark background with rich black (#0D0D0D) as the base. Subtle golden light rays emanate from the center, creating a premium feel. Soft bokeh effects in warm gold tones add depth and sophistication. The texture is smooth with a slight metallic sheen, suggesting high-end quality. Professional studio lighting with dramatic shadows.",
+      "style": {
+        "lighting": "dramatic golden accents",
+        "color_tone": "warm, dark, premium",
+        "texture": "smooth with subtle metallic sheen"
+      }
+    },
+    {
+      "type": "image",
+      "id": "product-visual",
+      "prompt": "An abstract golden geometric shape, like a stylized crown or premium emblem, rendered in 3D with metallic gold finish and soft reflections",
+      "position": {"x": 960, "y": 300, "width": 300, "height": 300},
+      "style": {
+        "type": "abstract",
+        "details": "3D metallic gold, premium feel"
+      }
+    },
+    {
+      "type": "text",
+      "id": "brand",
+      "content": "PREMIUM",
+      "position": {"x": 960, "y": 550, "width": 800, "height": 120},
+      "style": {
+        "fontSize": 96,
+        "fontWeight": "bold",
+        "color": "#D4AF37",
+        "align": "center"
+      }
+    },
+    {
+      "type": "text",
+      "id": "tagline",
+      "content": "Exclusive Collection 2025",
+      "position": {"x": 960, "y": 680, "width": 600, "height": 60},
+      "style": {
+        "fontSize": 28,
+        "fontWeight": "light",
+        "color": "#FFFFFF",
+        "align": "center"
+      }
+    }
+  ]
+}
+```
 
 ## ルール
 
-- Reasoningで推奨されたプリセット（tone, layout, palette）をpresetセクションに指定
-- **座標や色は省略可能** - プリセットから自動解決される
-- 明示的に指定した値はプリセットより優先される
-- ユーザーが指示していない要素は null にする
-- 背景のpromptは省略可能（パレットのヒントから生成）
-- illustrationは単一のオブジェクトとして返す
+1. **elements配列に必要な要素をすべて含める** - 背景、テキスト、画像、図形を自由に追加
+2. **背景プロンプトは叙述的に** - キーワード羅列ではなく、場面を描写
+3. **位置は具体的に** - x, y, width, heightをピクセルで指定
+4. **配色は統一感を** - meta.color_schemeで定義した色を各要素で使用
+5. **IDは一意に** - 各要素のidは重複しないようにする
 
-## スタイル選択ガイド
-
-| ユーザーの要望 | 選ぶべきstyle |
-|--------------|--------------|
-| ホログラム、メタリック、3D、立体 | **3d-metallic** |
-| 発光、ネオン、サイバー | neon-glow |
-| 高級感、ゴールド | gold |
-| クール、シルバー | silver |
-| シンプル、ビジネス | flat |
-
-## プリセット活用の例
-
-### 例1: テック系プレゼン
-```json
-{
-  "preset": { "tone": "tech", "layout": "center", "palette": "dark-tech" },
-  "title": { "text": "AI革命", "fontSize": 100, "style": "3d-metallic" },
-  "subtitle": { "text": "未来を創る技術" }
-}
-```
-→ 座標・色はプリセットから自動解決
-
-### 例2: 高級感のある告知
-```json
-{
-  "preset": { "tone": "premium", "layout": "center-middle", "palette": "premium-gold" },
-  "title": { "text": "GRAND OPENING", "fontSize": 120, "style": "gold" },
-  "subtitle": { "text": "特別なひとときを" }
-}
-```
-
-### 例3: カジュアルなイベント
-```json
-{
-  "preset": { "tone": "playful", "layout": "left", "palette": "vibrant" },
-  "title": { "text": "夏祭り開催！", "fontSize": 80 },
-  "subtitle": { "text": "8月15日 みんなで楽しもう" }
-}
-```
-
-## フォントファミリー
-
-| フォント | 用途 |
-|----------|------|
-| Hiragino Sans | モダン、クリーン（デフォルト） |
-| Hiragino Mincho | フォーマル、伝統的 |
-| Hiragino Maru Gothic | 親しみやすい、カジュアル |
-| Helvetica Neue | 欧文、モダン |
-| Arial | 欧文、汎用 |
+JSONのみを出力してください。
 """
 
 # 修正フェーズ用プロンプト
@@ -370,9 +445,6 @@ def load_design(session_id: str) -> Optional[dict]:
         return json.load(f)
 
 
-def save_nanobanana_image(image_base64: str, session_id: str) -> str:
-    """nanobanana前処理画像を保存してパスを返す"""
-    return save_image(image_base64, "nanobanana", session_id)
 
 
 class DesignerAgent:
@@ -436,10 +508,10 @@ class DesignerAgent:
                 config=config
             )
 
-            result_text = response.text
+            result_text = response.text or ""
 
             # 検索不要の場合
-            if "検索不要" in result_text:
+            if not result_text or "検索不要" in result_text:
                 return None
 
             # グラウンディングメタデータを抽出
@@ -468,15 +540,13 @@ class DesignerAgent:
         self,
         user_prompt: str,
         input_image: Optional[str] = None,
-        nanobanana_image: Optional[str] = None,
         web_research: Optional[dict] = None
     ) -> str:
         """ユーザーのプロンプトを深く分析してデザイン方針を決定
 
         Args:
             user_prompt: ユーザーの自然言語指示
-            input_image: ユーザー入力画像のBase64（オプション）
-            nanobanana_image: nanobanana前処理で生成した画像のBase64（オプション）
+            input_image: 参照画像のBase64（オプション）
             web_research: Webリサーチ結果（オプション）
 
         Returns:
@@ -485,6 +555,11 @@ class DesignerAgent:
         contents: List = []
 
         text_prompt = REASONING_PROMPT + "\n\n## ユーザーの指示\n" + user_prompt
+
+        # デザイン参照情報を追加
+        references_summary = get_references_summary()
+        if references_summary:
+            text_prompt += "\n\n" + references_summary
 
         # Web Research 結果を追加
         if web_research:
@@ -495,16 +570,12 @@ class DesignerAgent:
                     text_prompt += f"- [{src['title']}]({src['uri']})\n"
 
         # 画像がある場合は参照情報を追加
-        if input_image or nanobanana_image:
-            text_prompt += "\n\n## 参考画像あり\n画像も考慮してデザインを検討してください。"
-
-        contents.append(text_prompt)
-
-        # 画像をコンテンツに追加
         if input_image:
+            text_prompt += "\n\n## 参考画像あり\n画像も考慮してデザインを検討してください。"
+            contents.append(text_prompt)
             contents.append(self._base64_to_pil(input_image))
-        if nanobanana_image:
-            contents.append(self._base64_to_pil(nanobanana_image))
+        else:
+            contents.append(text_prompt)
 
         response = self.client.models.generate_content(
             model=DESIGN_MODEL,
@@ -517,18 +588,15 @@ class DesignerAgent:
         self,
         user_prompt: str,
         reasoning: Optional[str] = None,
-        input_image: Optional[str] = None,
-        nanobanana_image: Optional[str] = None
+        input_image: Optional[str] = None
     ) -> dict:
-        """ユーザーのプロンプトをJSON設計に変換（マルチモーダル対応）
+        """ユーザーのプロンプトをJSON設計に変換
 
         Args:
             user_prompt: ユーザーの自然言語指示
             reasoning: 事前のデザイン分析結果
-            input_image: ユーザー入力画像のBase64（オプション）
-            nanobanana_image: nanobanana前処理で生成した画像のBase64（オプション）
+            input_image: 参照画像のBase64（オプション）
         """
-        # コンテンツリストを構築
         contents: List = []
 
         # システムプロンプト + ユーザー指示
@@ -539,22 +607,12 @@ class DesignerAgent:
             text_prompt += "\n\n## デザイン分析（Reasoning）\n" + reasoning
 
         # 画像がある場合は参照情報を追加
-        image_descriptions = []
         if input_image:
-            image_descriptions.append("【ユーザー提供画像】この画像をベースに設計してください。")
-        if nanobanana_image:
-            image_descriptions.append("【AI生成参照画像】この画像のスタイルや雰囲気を参考にしてください。")
-
-        if image_descriptions:
-            text_prompt += "\n\n" + "\n".join(image_descriptions)
-
-        contents.append(text_prompt)
-
-        # 画像をコンテンツに追加
-        if input_image:
+            text_prompt += "\n\n【参考画像】この画像のスタイルや雰囲気を参考に設計してください。"
+            contents.append(text_prompt)
             contents.append(self._base64_to_pil(input_image))
-        if nanobanana_image:
-            contents.append(self._base64_to_pil(nanobanana_image))
+        else:
+            contents.append(text_prompt)
 
         response = self.client.models.generate_content(
             model=DESIGN_MODEL,
@@ -570,138 +628,146 @@ class DesignerAgent:
 
         return json.loads(json_match.group())
 
-    def _execute_design(
-        self,
-        design: dict,
-        input_image: Optional[str] = None,
-        nanobanana_image: Optional[str] = None
-    ) -> dict:
-        """設計に基づいて各要素を個別に生成し、PPTXに統合
+    def _execute_design(self, design: dict) -> dict:
+        """設計JSONに基づいて動的に要素を生成し、PPTXに統合
 
-        正しいフロー:
-        1. 背景画像を生成（design.background.promptから）
-        2. イラストを生成（必要な場合）
-        3. テキスト情報を抽出（PPTX上で編集可能なテキストボックスとして配置）
-        4. PPTXを生成
+        新形式: design.elements配列を順に処理
+        - background: 背景画像を生成
+        - image: イラスト/アイコン等を生成
+        - text: テキストボックスとして配置
+        - shape: 図形として配置
 
         Args:
-            design: 設計JSON
-            input_image: ユーザー入力画像のBase64（オプション、参照用）
-            nanobanana_image: nanobanana生成画像のBase64（オプション、参照用）
+            design: 設計JSON（elements配列を含む）
         """
+        from .tools.text_to_image import generate_image
+
         steps = []
-        generated_elements = []
+        pptx_elements = []  # PPTX生成用の要素リスト
 
-        # 参照画像（スタイル参考用）
-        reference_image = nanobanana_image or input_image
+        # elements配列を取得
+        elements = design.get("elements", [])
+        meta = design.get("meta", {})
+        color_scheme = meta.get("color_scheme", {})
 
-        # Step 1: 背景画像を生成
-        print("  [Step 1] 背景画像を生成中...")
-        background_config = design.get("background", {})
-        background_prompt = background_config.get("prompt")
+        if not elements:
+            return {
+                "success": False,
+                "error": "No elements found in design",
+                "steps": steps
+            }
 
-        if background_prompt:
-            bg_result = _text_to_image._tool_func(
-                prompt=f"背景画像: {background_prompt}\n\n重要: テキストや文字は一切含めないでください。純粋な背景画像のみを生成してください。",
-                reference_image_base64=reference_image
-            )
+        print(f"  処理する要素数: {len(elements)}")
+        image_count = 0
 
-            if bg_result.get("success"):
-                bg_path = save_image(bg_result["image_base64"], "background", self.session_id)
-                generated_elements.append({
-                    "id": "background",
-                    "type": "background",
-                    "image_base64": bg_result["image_base64"],
-                    "file_path": bg_path
-                })
-                steps.append(f"背景画像を生成: {bg_path}")
-                print(f"    背景画像: {bg_path}")
-            else:
-                print(f"    [Warning] 背景生成失敗: {bg_result.get('error')}")
-                steps.append(f"背景生成失敗: {bg_result.get('error')}")
+        for i, elem in enumerate(elements):
+            elem_type = elem.get("type")
+            elem_id = elem.get("id", f"{elem_type}_{i}")
 
-        # Step 2: イラストを生成（illustration.promptがある場合）
-        illustration_config = design.get("illustration", {})
-        illustration_prompt = illustration_config.get("prompt")
+            print(f"  [{i+1}/{len(elements)}] {elem_type}: {elem_id}")
 
-        if illustration_prompt:
-            print("  [Step 2] イラストを生成中...")
-            illust_result = _text_to_image._tool_func(
-                prompt=f"イラスト: {illustration_prompt}\n\n重要: 背景は透明または単色にしてください。テキストや文字は含めないでください。",
-                reference_image_base64=reference_image
-            )
+            if elem_type == "background":
+                # 背景画像を生成
+                prompt = elem.get("prompt", "")
+                style = elem.get("style", {})
 
-            if illust_result.get("success"):
-                illust_path = save_image(illust_result["image_base64"], "illustration", self.session_id)
-                generated_elements.append({
-                    "id": "illustration",
-                    "type": "illustration",
-                    "image_base64": illust_result["image_base64"],
-                    "file_path": illust_path,
-                    "bbox": illustration_config.get("bbox", {"x": 0, "y": 0, "width": 800, "height": 600})
-                })
-                steps.append(f"イラストを生成: {illust_path}")
-                print(f"    イラスト: {illust_path}")
-            else:
-                print(f"    [Warning] イラスト生成失敗: {illust_result.get('error')}")
-                steps.append(f"イラスト生成失敗: {illust_result.get('error')}")
-        else:
-            print("  [Step 2] イラスト: スキップ（promptなし）")
+                if prompt:
+                    style_desc = self._build_style_description(style, color_scheme)
+                    result = generate_image(
+                        prompt=prompt,
+                        style_description=style_desc,
+                        aspect_ratio="16:9",
+                        image_size="2K",
+                        no_text=True
+                    )
 
-        # Step 3: テキスト要素を抽出
-        print("  [Step 3] テキスト要素を抽出中...")
-        title_config = design.get("title", {})
-        subtitle_config = design.get("subtitle", {})
+                    if result.get("success"):
+                        bg_path = save_image(result["image_base64"], "background", self.session_id)
+                        pptx_elements.append({
+                            "id": elem_id,
+                            "type": "background",
+                            "image_base64": result["image_base64"],
+                            "file_path": bg_path
+                        })
+                        steps.append(f"背景画像を生成: {bg_path}")
+                        print(f"      → 生成成功: {bg_path}")
+                    else:
+                        print(f"      → 生成失敗: {result.get('error')}")
+                        steps.append(f"背景生成失敗: {result.get('error')}")
 
-        if title_config.get("text"):
-            generated_elements.append({
-                "id": "title",
-                "type": "text",
-                "content": title_config.get("text"),
-                "bbox": {
-                    "x": title_config.get("x", 960),
-                    "y": title_config.get("y", 400),
-                    "width": 1600,
-                    "height": 200
-                },
-                "style": {
-                    "fontSize": title_config.get("fontSize", 80),
-                    "fontWeight": title_config.get("fontWeight", "bold"),
-                    "fontStyle": "normal",
-                    "color": title_config.get("color", "#FFFFFF"),
-                    "align": "center"
-                }
-            })
-            steps.append(f"タイトル: {title_config.get('text')}")
-            print(f"    タイトル: {title_config.get('text')}")
+            elif elem_type == "image":
+                # イラスト/アイコン等を生成
+                prompt = elem.get("prompt", "")
+                position = elem.get("position", {})
+                style = elem.get("style", {})
 
-        if subtitle_config.get("text"):
-            generated_elements.append({
-                "id": "subtitle",
-                "type": "text",
-                "content": subtitle_config.get("text"),
-                "bbox": {
-                    "x": subtitle_config.get("x", 960),
-                    "y": subtitle_config.get("y", 550),
-                    "width": 1400,
-                    "height": 100
-                },
-                "style": {
-                    "fontSize": subtitle_config.get("fontSize", 40),
-                    "fontWeight": subtitle_config.get("fontWeight", "normal"),
-                    "fontStyle": "normal",
-                    "color": subtitle_config.get("color", "#CCCCCC"),
-                    "align": "center"
-                }
-            })
-            steps.append(f"サブタイトル: {subtitle_config.get('text')}")
-            print(f"    サブタイトル: {subtitle_config.get('text')}")
+                if prompt:
+                    image_count += 1
+                    style_desc = f"Style: {style.get('type', 'illustration')}. {style.get('details', '')}"
+                    result = generate_image(
+                        prompt=prompt,
+                        style_description=style_desc,
+                        aspect_ratio="1:1",  # イラストは正方形
+                        image_size="1K",
+                        no_text=True
+                    )
 
-        # Step 4: PPTX生成
-        print("  [Step 4] PPTX生成中...")
+                    if result.get("success"):
+                        img_path = save_image(result["image_base64"], f"image_{image_count}", self.session_id)
+                        pptx_elements.append({
+                            "id": elem_id,
+                            "type": "image",
+                            "image_base64": result["image_base64"],
+                            "file_path": img_path,
+                            "bbox": {
+                                "x": position.get("x", 0),
+                                "y": position.get("y", 0),
+                                "width": position.get("width", 400),
+                                "height": position.get("height", 400)
+                            }
+                        })
+                        steps.append(f"画像を生成: {elem_id}")
+                        print(f"      → 生成成功: {img_path}")
+                    else:
+                        print(f"      → 生成失敗: {result.get('error')}")
+                        steps.append(f"画像生成失敗 ({elem_id}): {result.get('error')}")
+
+            elif elem_type == "text":
+                # テキスト要素（PPTXでテキストボックスとして配置）
+                content = elem.get("content", "")
+                position = elem.get("position", {})
+                style = elem.get("style", {})
+
+                if content:
+                    pptx_elements.append({
+                        "id": elem_id,
+                        "type": "text",
+                        "content": content,
+                        "bbox": {
+                            "x": position.get("x", 960),
+                            "y": position.get("y", 400),
+                            "width": position.get("width", 1600),
+                            "height": position.get("height", 100)
+                        },
+                        "style": {
+                            "fontSize": style.get("fontSize", 48),
+                            "fontWeight": style.get("fontWeight", "normal"),
+                            "fontStyle": style.get("fontStyle", "normal"),
+                            "color": style.get("color", "#FFFFFF"),
+                            "align": style.get("align", "center")
+                        }
+                    })
+                    steps.append(f"テキスト: {content[:30]}...")
+                    print(f"      → テキスト追加: {content[:30]}...")
+
+            elif elem_type == "shape":
+                # 図形要素は無視（画像生成で対応）
+                print(f"      → スキップ: shape要素は非対応")
+
+        # PPTX生成
+        print(f"  PPTX生成中... ({len(pptx_elements)}要素)")
         pptx_result = _image_to_pptx(
-            elements=generated_elements,
-            original_image_base64=None,  # 切り出し不要
+            elements=pptx_elements,
             session_id=self.session_id
         )
 
@@ -709,15 +775,15 @@ class DesignerAgent:
         if pptx_result.get("success"):
             pptx_result_path = pptx_result["file_path"]
             steps.append(f"PPTX生成完了: {pptx_result_path}")
-            print(f"    PPTX: {pptx_result_path}")
+            print(f"      → PPTX: {pptx_result_path}")
         else:
-            print(f"  [Error] PPTX生成失敗: {pptx_result.get('error')}")
+            print(f"      → PPTX生成失敗: {pptx_result.get('error')}")
             steps.append(f"PPTX生成に失敗: {pptx_result.get('error')}")
 
         # 結果画像は背景画像を使用
         result_image = None
         result_path = None
-        for elem in generated_elements:
+        for elem in pptx_elements:
             if elem.get("type") == "background" and elem.get("image_base64"):
                 result_image = elem["image_base64"]
                 result_path = elem["file_path"]
@@ -726,29 +792,51 @@ class DesignerAgent:
         return {
             "success": pptx_result.get("success", False),
             "image_base64": result_image,
-            "elements": generated_elements,
+            "elements": pptx_elements,
             "result_path": result_path,
             "pptx_result_path": pptx_result_path,
             "element_files": pptx_result.get("element_files", []),
             "steps": steps
         }
 
+    def _build_style_description(self, style: dict, color_scheme: dict) -> str:
+        """スタイル情報から叙述的な説明を生成"""
+        parts = []
+
+        if style.get("lighting"):
+            parts.append(f"Lighting: {style['lighting']}")
+        if style.get("color_tone"):
+            parts.append(f"Color tone: {style['color_tone']}")
+        if style.get("texture"):
+            parts.append(f"Texture: {style['texture']}")
+
+        if color_scheme:
+            colors = []
+            if color_scheme.get("primary"):
+                colors.append(f"primary {color_scheme['primary']}")
+            if color_scheme.get("secondary"):
+                colors.append(f"secondary {color_scheme['secondary']}")
+            if color_scheme.get("accent"):
+                colors.append(f"accent {color_scheme['accent']}")
+            if colors:
+                parts.append(f"Color palette: {', '.join(colors)}")
+
+        return ". ".join(parts) if parts else ""
+
     def generate(
         self,
         user_prompt: str,
-        image_base64: Optional[str] = None,
-        use_nanobanana: bool = True,
+        reference_image_base64: Optional[str] = None,
         use_reasoning: bool = True,
         use_web_research: bool = True
     ) -> dict:
         """
-        ユーザーの指示から画像を生成
+        ユーザーの指示からスライドを生成
 
         Args:
             user_prompt: ユーザーの自然言語指示
-            image_base64: 入力画像のBase64データ（オプション）
-                          指定すると image-to-image モードで動作
-            use_nanobanana: nanobanana前処理を使用するか（デフォルト: True）
+            reference_image_base64: 参照画像のBase64データ（オプション）
+                                    スタイルや構成の参考にする
             use_reasoning: reasoningフェーズを使用するか（デフォルト: True）
             use_web_research: webリサーチを使用するか（デフォルト: True）
 
@@ -757,37 +845,13 @@ class DesignerAgent:
         """
         try:
             steps = []
-            nanobanana_image: Optional[str] = None
             reasoning: Optional[str] = None
             web_research: Optional[dict] = None
 
-            # Phase 0: Nanobanana 前処理
-            if use_nanobanana:
-                print("\n[Phase 0] Nanobanana 前処理...")
-                print(f"  プロンプト: {user_prompt[:50]}...")
-                if image_base64:
-                    print("  参照画像あり: 構造・スタイルを参考に生成")
-
-                # 参照画像がある場合は一緒に渡す
-                nanobanana_result = _text_to_image._tool_func(
-                    prompt=user_prompt,
-                    reference_image_base64=image_base64
-                )
-
-                if nanobanana_result.get("success"):
-                    nanobanana_image = nanobanana_result["image_base64"]
-                    # 前処理画像を保存
-                    nanobanana_path = save_nanobanana_image(nanobanana_image, self.session_id)
-                    steps.append(f"Nanobanana前処理画像を生成: {nanobanana_path}")
-                    print(f"  前処理画像を生成: {nanobanana_path}")
-                else:
-                    print(f"  [Warning] Nanobanana前処理に失敗: {nanobanana_result.get('error')}")
-                    steps.append(f"Nanobanana前処理に失敗（続行）: {nanobanana_result.get('error')}")
-
-            # Phase 0.5: Web Research（エージェントが自律判断）
+            # Phase 1: Web Research（エージェントが自律判断）
             if use_web_research:
-                print("\n[Phase 0.5] Web Research...")
-                web_research = self._web_research(user_prompt, input_image=image_base64)
+                print("\n[Phase 1] Web Research...")
+                web_research = self._web_research(user_prompt, input_image=reference_image_base64)
                 if web_research:
                     research_preview = web_research['research'][:200] + "..." if len(web_research['research']) > 200 else web_research['research']
                     print(f"  検索結果: {research_preview}")
@@ -800,30 +864,28 @@ class DesignerAgent:
                     print("  → 検索不要と判断")
                     steps.append("Webリサーチ: 不要と判断")
 
-            # Phase 1a: Reasoning（デザイン分析）
+            # Phase 2: Reasoning（デザイン分析）
             if use_reasoning:
-                print("\n[Phase 1a] デザイン分析（Reasoning）...")
+                print("\n[Phase 2] デザイン分析（Reasoning）...")
                 reasoning = self._reason(
                     user_prompt,
-                    input_image=image_base64,
-                    nanobanana_image=nanobanana_image,
+                    input_image=reference_image_base64,
                     web_research=web_research
                 )
                 print(f"  分析結果:\n{reasoning[:500]}..." if len(reasoning) > 500 else f"  分析結果:\n{reasoning}")
                 steps.append("デザイン分析完了")
 
-            # Phase 1b: 設計（マルチモーダル）
-            print("\n[Phase 1b] 設計JSON生成中...")
+            # Phase 3: 設計JSON生成
+            print("\n[Phase 3] 設計JSON生成中...")
             design = self._parse_design(
                 user_prompt,
                 reasoning=reasoning,
-                input_image=image_base64,
-                nanobanana_image=nanobanana_image
+                input_image=reference_image_base64
             )
             print(f"  設計JSON（プリセット解決前）: {json.dumps(design, ensure_ascii=False, indent=2)}")
 
-            # Phase 1c: プリセット解決
-            print("\n[Phase 1c] プリセット解決中...")
+            # Phase 4: プリセット解決
+            print("\n[Phase 4] プリセット解決中...")
             preset_info = design.get("preset", {})
             if preset_info:
                 print(f"  プリセット: layout={preset_info.get('layout')}, palette={preset_info.get('palette')}, tone={preset_info.get('tone')}")
@@ -831,17 +893,13 @@ class DesignerAgent:
             print(f"  設計JSON（プリセット解決後）: {json.dumps(resolved_design, ensure_ascii=False, indent=2)}")
             steps.append(f"プリセット解決完了: layout={preset_info.get('layout', 'center')}, palette={preset_info.get('palette', 'light')}, tone={preset_info.get('tone', '-')}")
 
-            # 設計JSONを保存（解決後のデザインを保存）
+            # 設計JSONを保存
             design_path = save_design(resolved_design, self.session_id, reasoning, web_research)
             steps.append(f"設計JSONを保存: {design_path}")
 
-            # Phase 2: 実行（画像分析 → PPTX生成）
-            print("\n[Phase 2] 設計を実行中...")
-            result = self._execute_design(
-                resolved_design,
-                input_image=image_base64,
-                nanobanana_image=nanobanana_image
-            )
+            # Phase 5: 実行（各要素を生成 → PPTX統合）
+            print("\n[Phase 5] 設計を実行中...")
+            result = self._execute_design(resolved_design)
 
             # ステップをマージ
             all_steps = steps + result.get("steps", [])
@@ -850,17 +908,16 @@ class DesignerAgent:
                 "success": result.get("success", False),
                 "session_id": self.session_id,
                 "design": resolved_design,
-                "design_raw": design,  # プリセット解決前の生のJSON
+                "design_raw": design,
                 "preset": preset_info,
                 "reasoning": reasoning,
                 "web_research": web_research,
                 "steps": all_steps,
-                "nanobanana_image": nanobanana_image,
                 "image_base64": result.get("image_base64"),
-                "elements": result.get("elements"),  # 検出された要素リスト
+                "elements": result.get("elements"),
                 "result_path": result.get("result_path"),
                 "pptx_result_path": result.get("pptx_result_path"),
-                "element_files": result.get("element_files"),  # 生成された要素ファイル
+                "element_files": result.get("element_files"),
                 "response": "\n".join(all_steps)
             }
 
@@ -948,10 +1005,9 @@ class DesignerAgent:
             design_path = save_design(resolved_design, self.session_id, reasoning=None)
             steps.append(f"修正後の設計を保存: {design_path}")
 
-            # 実行（画像分析 → PPTX生成）
-            # NOTE: refineでは元のnanobanana画像を再利用する必要がある
+            # 実行（各要素を生成 → PPTX統合）
             print("\n[Refine] 修正後の設計を実行中...")
-            result = self._execute_design(resolved_design, nanobanana_image=None)
+            result = self._execute_design(resolved_design)
 
             all_steps = steps + result.get("steps", [])
 
