@@ -30,3 +30,5 @@ npm-debug.log*
 *.ttf
 *.woff
 *.woff2
+
+agent_output/

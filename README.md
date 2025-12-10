@@ -1,37 +1,54 @@
-# Nanobanana Designer Agent
+# Nanobanana to PPTX
 
-自然言語の指示から画像デザインを生成するAIエージェントシステムです。Strands Agents フレームワークと Google Gemini API を使用しています。
+Nanobanana（Gemini画像生成）で作成した高品質画像を、編集可能なPowerPointプレゼンテーションに変換するAIエージェントシステムです。
 
 ## 概要
 
-このシステムは、ユーザーの自然言語指示を解析し、以下の要素を個別に生成・合成してスライド画像を作成します：
+このシステムは、Nanobanana（Gemini 3 Pro Image）が生成した高品質な画像を分析し、要素を識別して編集可能なPPTXに変換します。
 
-- **背景（Background）**: Gemini による画像生成
-- **イラスト（Illustration）**: 幾何学シェイプ描画（SVG / Pillow）
-- **タイトル（Title）**: テキスト描画（10種類のスタイルプリセット対応）
-- **サブタイトル（Subtitle）**: テキスト描画（10種類のスタイルプリセット対応）
+### ワークフロー
 
-## 出力形式
-
-3つの形式で出力します：
-
-| 形式 | 用途 | 編集 |
-|------|------|------|
-| **PNG** | 最終合成画像（プレビュー用） | 不可 |
-| **SVG** | 編集可能なベクター形式 | Adobe Illustrator対応 |
-| **PPTX** | PowerPointプレゼンテーション | テキスト編集可能 |
-
-## 動作モード
-
-1. **text-to-image**: プロンプトのみで新規画像を生成
-2. **image-to-image**: 参考画像を元に新規画像を生成（参考画像のスタイルや構図を参照）
+```
+ユーザー入力（プロンプト + 参照画像）
+       │
+       ▼
+┌─────────────────────────────────┐
+│ Phase 0: Nanobanana 前処理      │
+│ Gemini 3 Pro Image で高品質画像生成 │
+└─────────────────────────────────┘
+       │
+       ▼
+┌─────────────────────────────────┐
+│ Phase 1: 画像分析               │
+│ Gemini 3 Pro で要素を識別       │
+│ - テキスト要素 → SVG生成        │
+│ - 非テキスト要素 → bbox取得     │
+└─────────────────────────────────┘
+       │
+       ▼
+┌─────────────────────────────────┐
+│ Phase 2: PPTX生成               │
+│ - 背景/イラスト → 元画像から切り出し │
+│ - テキスト → SVG→PNG変換        │
+│ - 全要素をPPTXに配置            │
+└─────────────────────────────────┘
+       │
+       ▼
+   agent_output/{session_id}/
+   ├── nanobanana.png    # 前処理画像
+   ├── design.json       # 設計JSON
+   ├── {session_id}.pptx # 出力PPTX
+   ├── background.png    # 背景
+   ├── text_*.svg/png    # テキスト要素
+   └── ...
+```
 
 ## 環境構築
 
 ### 必要条件
 
 - Python 3.12+
-- Node.js v22+ (オプション)
+- Google API Key（Gemini API）
 
 ### セットアップ
 
@@ -82,49 +99,38 @@ result = agent.generate(
     "この画像のスタイルで新しい背景を生成",
     image_base64=image_base64
 )
+
+# 出力先
+print(result.get("pptx_result_path"))  # PPTXファイルパス
 ```
 
 ## 出力
 
-生成されたファイルは以下のフォルダに保存されます：
+生成されたファイルはセッションIDごとにまとめて保存されます：
 
 ```
-output/                 # PNG画像
-  background/           # 背景画像
-  illustration/         # イラスト（透過PNG）
-  title/                # タイトル（透過PNG）
-  subtitle/             # サブタイトル（透過PNG）
-  result/               # 最終合成画像
-
-output_svg/             # SVGファイル
-  background/           # 背景SVG（ラスター埋め込み）
-  illustration/         # イラストSVG（編集可能）
-  title/                # タイトルSVG（編集可能）
-  subtitle/             # サブタイトルSVG（編集可能）
-  result/               # 最終合成SVG
-
-output_pptx/            # PowerPointファイル
-  result/               # 最終PPTX（テキスト編集可能）
+agent_output/
+└── {session_id}/
+    ├── nanobanana.png      # Nanobanana前処理画像
+    ├── result.png          # 結果画像
+    ├── design.json         # 設計JSON（プリセット情報含む）
+    ├── {session_id}.pptx   # 最終PPTX
+    ├── background.png      # 背景画像（元画像から切り出し）
+    ├── text_1.svg          # テキストSVG
+    ├── text_1.png          # テキストPNG（SVG変換後）
+    ├── illustration_*.png  # イラスト（元画像から切り出し）
+    └── ...
 ```
 
-各ファイルはセッションID（例: `SYV4-1867.png`）で管理されます。
+セッションIDは `XXXX-YYYY` 形式（例: `SYV4-1867`）で自動生成されます。
 
-## テキストスタイルプリセット
+## ツール
 
-タイトル・サブタイトルに適用可能な10種類のスタイル：
-
-| スタイル | 説明 | 推奨用途 |
-|----------|------|----------|
-| `flat` | シンプルな単色 | ビジネス、フォーマル |
-| `shadow` | ドロップシャドウ | 可読性重視 |
-| `3d-metallic` | ホログラム/メタリック/3D風 | 立体感、光沢、虹色反射 |
-| `neon-glow` | ネオン発光 | テクノロジー、エンタメ |
-| `glass` | ガラス風透明感 | 洗練、クリーン |
-| `outline` | アウトライン | カジュアル、ポップ |
-| `gold` | ゴールドメタリック | 高級感、祝い事 |
-| `silver` | シルバーメタリック | クール、先進的 |
-| `emboss` | エンボス/浮き彫り | 伝統的、重厚感 |
-| `gradient` | 2色グラデーション | 単純な色変化 |
+| ツール | 説明 |
+|--------|------|
+| `text_to_image` | Nanobanana前処理（Gemini 3 Pro Imageで画像生成） |
+| `analyze_image` | 画像分析（Gemini 3 Proで要素識別・SVG生成） |
+| `image_to_pptx` | PPTX生成（要素配置） |
 
 ## ドキュメント
 
@@ -132,48 +138,36 @@ output_pptx/            # PowerPointファイル
 
 - [システム概要](docs/overview.md) - アーキテクチャと処理フロー
 - [ツール一覧](docs/tools.md) - 各ツールの詳細仕様
-- [JSONスキーマ](docs/json-schema.md) - 設計JSONの仕様
-- [PPTX出力](docs/pptx-export.md) - PowerPoint出力の詳細
+- [JSONスキーマ](docs/json-schema.md) - 設計JSONの仕様（プリセットシステム）
 
 ## ディレクトリ構成
 
 ```
 nanobanana-to-pptx/
-  agents/
-    designer_agent.py    # メインエージェント
-    test_agent.py        # テスト用スクリプト
-    tools/
-      # PNG生成ツール
-      text_to_background.py   # 背景生成（text-to-image）
-      image_to_background.py  # 背景生成（image-to-image）
-      draw_illustration.py    # イラスト描画（Pillow）
-      text_to_title.py        # タイトル描画
-      text_to_subtitle.py     # サブタイトル描画
-      compose_slide.py        # PNG合成ツール
-      jp_fonts.py             # 日本語フォント設定
-      # SVG生成ツール
-      image_to_svg.py         # 画像→SVG埋め込み
-      draw_illustration_svg.py # イラストSVG生成
-      text_to_title_svg.py    # タイトルSVG生成（スタイルプリセット対応）
-      text_to_subtitle_svg.py # サブタイトルSVG生成（スタイルプリセット対応）
-      compose_slide_svg.py    # SVG合成（Illustrator対応）
-      svg_text_styles.py      # SVGスタイルプリセット定義
-      # PPTX生成ツール
-      svg_to_pptx.py          # PPTX出力（編集可能版）
-  output/                # PNG画像の出力先
-  output_svg/            # SVGファイルの出力先
-  output_pptx/           # PPTXファイルの出力先
-  docs/                  # ドキュメント
+├── agents/
+│   ├── designer_agent.py    # メインエージェント
+│   ├── test_agent.py        # テスト用スクリプト
+│   ├── presets.py           # プリセット定義
+│   ├── preset_resolver.py   # プリセット解決
+│   ├── fonts/               # フォントファイル
+│   │   └── NotoSansCJKjp-Regular.otf
+│   └── tools/
+│       ├── text_to_image.py    # Nanobanana前処理
+│       ├── analyze_image.py    # 画像分析（Gemini 3 Pro）
+│       └── image_to_pptx.py    # PPTX生成
+├── agent_output/            # 出力ディレクトリ（セッションIDごと）
+├── tests/                   # テストスクリプト
+└── docs/                    # ドキュメント
 ```
 
 ## 技術スタック
 
-- **Strands Agents**: エージェントフレームワーク
-- **Google Gemini API**: 画像生成（gemini-2.5-flash-image）、設計解析（gemini-2.0-flash）
-- **Pillow**: テキスト描画、シェイプ描画、画像合成（PNG）
-- **SVG**: 編集可能なベクター出力（テキスト・シェイプ）
-- **python-pptx**: PowerPoint出力（テキスト編集可能）
+- **Google Gemini API**
+  - Gemini 3 Pro Image: 高品質画像生成（Nanobanana前処理）
+  - Gemini 3 Pro: 画像分析・SVG生成・設計解析
+- **Pillow**: 画像処理（切り出し、合成）
 - **cairosvg**: SVG→PNG変換
+- **python-pptx**: PowerPoint出力
 
 ## ライセンス
 

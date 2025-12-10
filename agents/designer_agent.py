@@ -18,30 +18,9 @@ from PIL import Image
 # Nanobanana 画像生成（前処理）
 from .tools.text_to_image import text_to_image as _text_to_image
 
-# Text-to-* ツール（新規生成）
-from .tools.text_to_background import text_to_background as _text_to_background
-from .tools.text_to_title import text_to_title as _text_to_title
-from .tools.text_to_subtitle import text_to_subtitle as _text_to_subtitle
-
-# Image-to-* ツール（既存画像編集）
-from .tools.image_to_background import image_to_background as _image_to_background
-
-# イラスト描画ツール（Pillow）
-from .tools.draw_illustration import draw_illustration as _draw_illustration
-
-# 合成ツール
-from .tools.compose_slide import compose_slide as _compose_slide
-
-# SVGツール
-from .tools.image_to_svg import image_to_svg as _image_to_svg
-from .tools.text_to_title_svg import text_to_title_svg as _text_to_title_svg
-from .tools.text_to_subtitle_svg import text_to_subtitle_svg as _text_to_subtitle_svg
-from .tools.draw_illustration_svg import draw_illustration_svg as _draw_illustration_svg
-from .tools.compose_slide_svg import compose_slide_svg as _compose_slide_svg
-
-# PPTXツール
-from .tools.svg_to_pptx import svg_to_pptx as _svg_to_pptx
-from .tools.svg_to_pptx import svg_to_pptx_editable as _svg_to_pptx_editable
+# 新フロー用ツール
+from .tools.analyze_image import analyze_image as _analyze_image
+from .tools.image_to_pptx import image_to_pptx as _image_to_pptx
 
 # プリセットシステム
 from .presets import get_preset_summary, LAYOUTS, PALETTES, TONES
@@ -50,11 +29,8 @@ from .preset_resolver import resolve_presets, get_prompt_for_preset_selection
 # .env.local を読み込み
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env.local'))
 
-# 出力ディレクトリ
-OUTPUT_DIR = Path(__file__).parent.parent / "output"
-OUTPUT_SVG_DIR = Path(__file__).parent.parent / "output_svg"
-OUTPUT_PARSE_IMAGE_DIR = Path(__file__).parent.parent / "output_parse_image"
-OUTPUT_DESIGN_DIR = Path(__file__).parent.parent / "output_design"
+# 出力ディレクトリ（セッションIDごとにまとめる）
+AGENT_OUTPUT_DIR = Path(__file__).parent.parent / "agent_output"
 
 # 設計フェーズ用のモデル
 DESIGN_MODEL = "gemini-3-pro-preview"
@@ -340,10 +316,17 @@ JSONのみを出力してください。
 """
 
 
-def save_image(image_base64: str, folder: str, session_id: str) -> str:
+def get_session_output_dir(session_id: str) -> Path:
+    """セッション用の出力ディレクトリを取得"""
+    output_dir = AGENT_OUTPUT_DIR / session_id
+    output_dir.mkdir(parents=True, exist_ok=True)
+    return output_dir
+
+
+def save_image(image_base64: str, filename: str, session_id: str) -> str:
     """画像を保存してパスを返す"""
-    output_path = OUTPUT_DIR / folder / f"{session_id}.png"
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_dir = get_session_output_dir(session_id)
+    output_path = output_dir / f"{filename}.png"
 
     image_data = base64.b64decode(image_base64)
     with open(output_path, 'wb') as f:
@@ -359,8 +342,8 @@ def save_design(
     web_research: Optional[dict] = None
 ) -> str:
     """設計JSONを保存してパスを返す"""
-    output_path = OUTPUT_DESIGN_DIR / f"{session_id}.json"
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_dir = get_session_output_dir(session_id)
+    output_path = output_dir / "design.json"
 
     # 設計JSON、reasoning、web_researchをまとめて保存
     data = {
@@ -378,7 +361,8 @@ def save_design(
 
 def load_design(session_id: str) -> Optional[dict]:
     """保存された設計JSONを読み込む"""
-    design_path = OUTPUT_DESIGN_DIR / f"{session_id}.json"
+    output_dir = get_session_output_dir(session_id)
+    design_path = output_dir / "design.json"
     if not design_path.exists():
         return None
 
@@ -386,27 +370,9 @@ def load_design(session_id: str) -> Optional[dict]:
         return json.load(f)
 
 
-def save_svg(svg_content: str, folder: str, session_id: str) -> str:
-    """SVGを保存してパスを返す"""
-    output_path = OUTPUT_SVG_DIR / folder / f"{session_id}.svg"
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    with open(output_path, 'w', encoding='utf-8') as f:
-        f.write(svg_content)
-
-    return str(output_path)
-
-
-def save_parse_image(image_base64: str, session_id: str) -> str:
-    """前処理画像を保存してパスを返す"""
-    output_path = OUTPUT_PARSE_IMAGE_DIR / f"{session_id}.png"
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    image_data = base64.b64decode(image_base64)
-    with open(output_path, 'wb') as f:
-        f.write(image_data)
-
-    return str(output_path)
+def save_nanobanana_image(image_base64: str, session_id: str) -> str:
+    """nanobanana前処理画像を保存してパスを返す"""
+    return save_image(image_base64, "nanobanana", session_id)
 
 
 class DesignerAgent:
@@ -604,304 +570,168 @@ class DesignerAgent:
 
         return json.loads(json_match.group())
 
-    def _execute_design(self, design: dict, input_image: Optional[str] = None) -> dict:
-        """設計JSONに基づいて各要素を生成
+    def _execute_design(
+        self,
+        design: dict,
+        input_image: Optional[str] = None,
+        nanobanana_image: Optional[str] = None
+    ) -> dict:
+        """設計に基づいて各要素を個別に生成し、PPTXに統合
+
+        正しいフロー:
+        1. 背景画像を生成（design.background.promptから）
+        2. イラストを生成（必要な場合）
+        3. テキスト情報を抽出（PPTX上で編集可能なテキストボックスとして配置）
+        4. PPTXを生成
 
         Args:
             design: 設計JSON
-            input_image: 入力画像のBase64データ（オプション）
+            input_image: ユーザー入力画像のBase64（オプション、参照用）
+            nanobanana_image: nanobanana生成画像のBase64（オプション、参照用）
         """
         steps = []
-        elements = {}      # PNG用
-        svg_elements = {}  # SVG用
-        mode = "image-to-image" if input_image else "text-to-image"
-        print(f"  モード: {mode}")
+        generated_elements = []
 
-        # 1. 背景生成
-        bg = design.get("background")
-        if bg and bg.get("prompt"):
-            print(f"  [Step 1] 背景生成: {bg['prompt'][:50]}...")
-            if input_image:
-                result = _image_to_background._tool_func(
-                    prompt=bg["prompt"],
-                    image_base64=input_image
-                )
-            else:
-                result = _text_to_background._tool_func(prompt=bg["prompt"])
+        # 参照画像（スタイル参考用）
+        reference_image = nanobanana_image or input_image
 
-            if result.get("success"):
-                elements["background"] = result["image_base64"]
-                path = save_image(result["image_base64"], "background", self.session_id)
-                steps.append(f"背景を生成: {path}")
+        # Step 1: 背景画像を生成
+        print("  [Step 1] 背景画像を生成中...")
+        background_config = design.get("background", {})
+        background_prompt = background_config.get("prompt")
 
-                # SVG変換（Base64埋め込み）
-                svg_result = _image_to_svg._tool_func(image_base64=result["image_base64"])
-                if svg_result.get("success"):
-                    svg_elements["background"] = svg_result["svg"]
-                    svg_path = save_svg(svg_result["svg"], "background", self.session_id)
-                    steps.append(f"背景SVGを生成: {svg_path}")
-            else:
-                print(f"  [Error] 背景生成失敗: {result.get('error')}")
-                steps.append(f"背景生成に失敗: {result.get('error')}")
-        else:
-            print("  [Step 1] 背景: スキップ")
-
-        # 2. イラスト生成（Pillow描画 + SVG）
-        illust_data = design.get("illustration")
-
-        # 配列の場合は最初の要素を使用（後方互換性）
-        # TODO: 将来的には複数イラストレーションの合成に対応
-        if isinstance(illust_data, list):
-            illust = illust_data[0] if illust_data else None
-            if len(illust_data) > 1:
-                print(f"  [Note] {len(illust_data)}個のイラストが指定されましたが、現在は最初の1つのみ使用します")
-        else:
-            illust = illust_data
-
-        if illust and isinstance(illust, dict) and illust.get("type"):
-            shape_type = illust.get("type", "polygon")
-            print(f"  [Step 2] イラスト生成: {shape_type}...")
-
-            # PNG版
-            result = _draw_illustration._tool_func(shape=illust)
-            if result.get("success"):
-                elements["illustration"] = result["image_base64"]
-                path = save_image(result["image_base64"], "illustration", self.session_id)
-                steps.append(f"イラストを生成: {path}")
-
-            # SVG版（直接生成）
-            svg_result = _draw_illustration_svg._tool_func(shape=illust)
-            if svg_result.get("success"):
-                svg_elements["illustration"] = svg_result["svg"]
-                svg_path = save_svg(svg_result["svg"], "illustration", self.session_id)
-                steps.append(f"イラストSVGを生成: {svg_path}")
-            else:
-                print(f"  [Error] イラスト生成失敗: {result.get('error')}")
-                steps.append(f"イラスト生成に失敗: {result.get('error')}")
-        else:
-            print("  [Step 2] イラスト: スキップ")
-
-        # 3. タイトル生成
-        title = design.get("title")
-        if title and title.get("text"):
-            print(f"  [Step 3] タイトル生成: {title['text'][:30]}...")
-
-            # fillの処理（後方互換性: colorも受け付ける）
-            title_fill = title.get("fill")
-            if title_fill is None and title.get("color"):
-                title_fill = title.get("color")
-
-            # PNG版（単色のみ対応）
-            title_color = "#ffffff"
-            if isinstance(title_fill, str):
-                title_color = title_fill
-            elif isinstance(title_fill, dict):
-                title_color = title_fill.get("color", title_fill.get("start", "#ffffff"))
-
-            result = _text_to_title._tool_func(
-                text=title["text"],
-                x=title.get("x", 960),
-                y=title.get("y", 400),
-                font_size=title.get("fontSize", 64),
-                color=title_color
+        if background_prompt:
+            bg_result = _text_to_image._tool_func(
+                prompt=f"背景画像: {background_prompt}\n\n重要: テキストや文字は一切含めないでください。純粋な背景画像のみを生成してください。",
+                reference_image_base64=reference_image
             )
-            if result.get("success"):
-                elements["title"] = result["image_base64"]
-                path = save_image(result["image_base64"], "title", self.session_id)
-                steps.append(f"タイトルを生成: {path}")
 
-            # SVG版（スタイルプリセット対応）
-            title_style = title.get("style", "flat")
-            svg_result = _text_to_title_svg._tool_func(
-                text=title["text"],
-                x=title.get("x", 960),
-                y=title.get("y", 400),
-                font_size=title.get("fontSize", 64),
-                font_family=title.get("fontFamily"),
-                font_weight=title.get("fontWeight", "bold"),
-                color=title.get("color", title_color),
-                style=title_style,
-                fill=title_fill,
-                glow_color=title.get("glowColor")
-            )
-            if svg_result.get("success"):
-                svg_elements["title"] = svg_result["svg"]
-                svg_path = save_svg(svg_result["svg"], "title", self.session_id)
-                steps.append(f"タイトルSVGを生成 (style={title_style}): {svg_path}")
+            if bg_result.get("success"):
+                bg_path = save_image(bg_result["image_base64"], "background", self.session_id)
+                generated_elements.append({
+                    "id": "background",
+                    "type": "background",
+                    "image_base64": bg_result["image_base64"],
+                    "file_path": bg_path
+                })
+                steps.append(f"背景画像を生成: {bg_path}")
+                print(f"    背景画像: {bg_path}")
             else:
-                print(f"  [Error] タイトル生成失敗: {svg_result.get('error')}")
-                steps.append(f"タイトル生成に失敗: {svg_result.get('error')}")
-        else:
-            print("  [Step 3] タイトル: スキップ")
+                print(f"    [Warning] 背景生成失敗: {bg_result.get('error')}")
+                steps.append(f"背景生成失敗: {bg_result.get('error')}")
 
-        # 4. サブタイトル生成
-        subtitle = design.get("subtitle")
-        if subtitle and subtitle.get("text"):
-            print(f"  [Step 4] サブタイトル生成: {subtitle['text'][:30]}...")
+        # Step 2: イラストを生成（illustration.promptがある場合）
+        illustration_config = design.get("illustration", {})
+        illustration_prompt = illustration_config.get("prompt")
 
-            # fillの処理（後方互換性: colorも受け付ける）
-            subtitle_fill = subtitle.get("fill")
-            if subtitle_fill is None and subtitle.get("color"):
-                subtitle_fill = subtitle.get("color")
-
-            # PNG版（単色のみ対応）
-            subtitle_color = "#ffffff"
-            if isinstance(subtitle_fill, str):
-                subtitle_color = subtitle_fill
-            elif isinstance(subtitle_fill, dict):
-                subtitle_color = subtitle_fill.get("color", subtitle_fill.get("start", "#ffffff"))
-
-            result = _text_to_subtitle._tool_func(
-                text=subtitle["text"],
-                x=subtitle.get("x", 960),
-                y=subtitle.get("y", 500),
-                font_size=subtitle.get("fontSize", 36),
-                color=subtitle_color
+        if illustration_prompt:
+            print("  [Step 2] イラストを生成中...")
+            illust_result = _text_to_image._tool_func(
+                prompt=f"イラスト: {illustration_prompt}\n\n重要: 背景は透明または単色にしてください。テキストや文字は含めないでください。",
+                reference_image_base64=reference_image
             )
-            if result.get("success"):
-                elements["subtitle"] = result["image_base64"]
-                path = save_image(result["image_base64"], "subtitle", self.session_id)
-                steps.append(f"サブタイトルを生成: {path}")
 
-            # SVG版（スタイルプリセット対応）
-            subtitle_style = subtitle.get("style", "flat")
-            svg_result = _text_to_subtitle_svg._tool_func(
-                text=subtitle["text"],
-                x=subtitle.get("x", 960),
-                y=subtitle.get("y", 500),
-                font_size=subtitle.get("fontSize", 36),
-                font_family=subtitle.get("fontFamily"),
-                font_weight=subtitle.get("fontWeight", "normal"),
-                color=subtitle.get("color", subtitle_color),
-                style=subtitle_style,
-                fill=subtitle_fill,
-                glow_color=subtitle.get("glowColor")
-            )
-            if svg_result.get("success"):
-                svg_elements["subtitle"] = svg_result["svg"]
-                svg_path = save_svg(svg_result["svg"], "subtitle", self.session_id)
-                steps.append(f"サブタイトルSVGを生成 (style={subtitle_style}): {svg_path}")
+            if illust_result.get("success"):
+                illust_path = save_image(illust_result["image_base64"], "illustration", self.session_id)
+                generated_elements.append({
+                    "id": "illustration",
+                    "type": "illustration",
+                    "image_base64": illust_result["image_base64"],
+                    "file_path": illust_path,
+                    "bbox": illustration_config.get("bbox", {"x": 0, "y": 0, "width": 800, "height": 600})
+                })
+                steps.append(f"イラストを生成: {illust_path}")
+                print(f"    イラスト: {illust_path}")
             else:
-                print(f"  [Error] サブタイトル生成失敗: {svg_result.get('error')}")
-                steps.append(f"サブタイトル生成に失敗: {svg_result.get('error')}")
+                print(f"    [Warning] イラスト生成失敗: {illust_result.get('error')}")
+                steps.append(f"イラスト生成失敗: {illust_result.get('error')}")
         else:
-            print("  [Step 4] サブタイトル: スキップ")
+            print("  [Step 2] イラスト: スキップ（promptなし）")
 
-        # 5. PNG合成
-        print("  [Step 5] PNG合成中...")
-        result = _compose_slide._tool_func(
-            background_base64=elements.get("background"),
-            illustration_base64=elements.get("illustration"),
-            illustration_x=0,  # 座標は描画済みなので(0,0)に配置
-            illustration_y=0,
-            title_base64=elements.get("title"),
-            subtitle_base64=elements.get("subtitle")
+        # Step 3: テキスト要素を抽出
+        print("  [Step 3] テキスト要素を抽出中...")
+        title_config = design.get("title", {})
+        subtitle_config = design.get("subtitle", {})
+
+        if title_config.get("text"):
+            generated_elements.append({
+                "id": "title",
+                "type": "text",
+                "content": title_config.get("text"),
+                "bbox": {
+                    "x": title_config.get("x", 960),
+                    "y": title_config.get("y", 400),
+                    "width": 1600,
+                    "height": 200
+                },
+                "style": {
+                    "fontSize": title_config.get("fontSize", 80),
+                    "fontWeight": title_config.get("fontWeight", "bold"),
+                    "fontStyle": "normal",
+                    "color": title_config.get("color", "#FFFFFF"),
+                    "align": "center"
+                }
+            })
+            steps.append(f"タイトル: {title_config.get('text')}")
+            print(f"    タイトル: {title_config.get('text')}")
+
+        if subtitle_config.get("text"):
+            generated_elements.append({
+                "id": "subtitle",
+                "type": "text",
+                "content": subtitle_config.get("text"),
+                "bbox": {
+                    "x": subtitle_config.get("x", 960),
+                    "y": subtitle_config.get("y", 550),
+                    "width": 1400,
+                    "height": 100
+                },
+                "style": {
+                    "fontSize": subtitle_config.get("fontSize", 40),
+                    "fontWeight": subtitle_config.get("fontWeight", "normal"),
+                    "fontStyle": "normal",
+                    "color": subtitle_config.get("color", "#CCCCCC"),
+                    "align": "center"
+                }
+            })
+            steps.append(f"サブタイトル: {subtitle_config.get('text')}")
+            print(f"    サブタイトル: {subtitle_config.get('text')}")
+
+        # Step 4: PPTX生成
+        print("  [Step 4] PPTX生成中...")
+        pptx_result = _image_to_pptx(
+            elements=generated_elements,
+            original_image_base64=None,  # 切り出し不要
+            session_id=self.session_id
         )
 
-        result_path = None
-        if result.get("success"):
-            result_path = save_image(result["image_base64"], "result", self.session_id)
-            steps.append(f"PNG合成完了: {result_path}")
-        else:
-            print(f"  [Error] PNG合成失敗: {result.get('error')}")
-            steps.append(f"PNG合成に失敗: {result.get('error')}")
-
-        # 6. SVG合成
-        print("  [Step 6] SVG合成中...")
-        svg_result = _compose_slide_svg._tool_func(
-            background_svg=svg_elements.get("background"),
-            illustration_svg=svg_elements.get("illustration"),
-            title_svg=svg_elements.get("title"),
-            subtitle_svg=svg_elements.get("subtitle")
-        )
-
-        svg_result_path = None
-        if svg_result.get("success"):
-            svg_result_path = save_svg(svg_result["svg"], "result", self.session_id)
-            steps.append(f"SVG合成完了: {svg_result_path}")
-        else:
-            print(f"  [Error] SVG合成失敗: {svg_result.get('error')}")
-            steps.append(f"SVG合成に失敗: {svg_result.get('error')}")
-
-        # 7. PPTX生成（編集可能版）
         pptx_result_path = None
-        print("  [Step 7] PPTX生成中（編集可能）...")
-
-        # タイトル・サブタイトルの設定を取得
-        title = design.get("title")
-        subtitle = design.get("subtitle")
-
-        title_config = None
-        if title and title.get("text"):
-            # fillからcolorを取得（後方互換性）
-            title_color = title.get("color", "#FFFFFF")
-            title_fill = title.get("fill")
-            if isinstance(title_fill, str):
-                title_color = title_fill
-            elif isinstance(title_fill, dict):
-                title_color = title_fill.get("color", title_fill.get("start", title_color))
-
-            title_config = {
-                "text": title["text"],
-                "x": title.get("x", 960),
-                "y": title.get("y", 400),
-                "fontSize": title.get("fontSize", 64),
-                "fontFamily": title.get("fontFamily", "Arial"),
-                "fontWeight": title.get("fontWeight", "bold"),
-                "color": title_color
-            }
-
-        subtitle_config = None
-        if subtitle and subtitle.get("text"):
-            # fillからcolorを取得（後方互換性）
-            subtitle_color = subtitle.get("color", "#FFFFFF")
-            subtitle_fill = subtitle.get("fill")
-            if isinstance(subtitle_fill, str):
-                subtitle_color = subtitle_fill
-            elif isinstance(subtitle_fill, dict):
-                subtitle_color = subtitle_fill.get("color", subtitle_fill.get("start", subtitle_color))
-
-            subtitle_config = {
-                "text": subtitle["text"],
-                "x": subtitle.get("x", 960),
-                "y": subtitle.get("y", 500),
-                "fontSize": subtitle.get("fontSize", 36),
-                "fontFamily": subtitle.get("fontFamily", "Arial"),
-                "fontWeight": subtitle.get("fontWeight", "normal"),
-                "color": subtitle_color
-            }
-
-        pptx_result = _svg_to_pptx_editable._tool_func(
-            session_id=self.session_id,
-            folder="result",
-            background_base64=elements.get("background"),
-            illustration_base64=elements.get("illustration"),
-            title_config=title_config,
-            subtitle_config=subtitle_config
-        )
         if pptx_result.get("success"):
             pptx_result_path = pptx_result["file_path"]
-            steps.append(f"PPTX生成完了（編集可能）: {pptx_result_path}")
+            steps.append(f"PPTX生成完了: {pptx_result_path}")
+            print(f"    PPTX: {pptx_result_path}")
         else:
             print(f"  [Error] PPTX生成失敗: {pptx_result.get('error')}")
             steps.append(f"PPTX生成に失敗: {pptx_result.get('error')}")
 
-        if result.get("success"):
-            return {
-                "success": True,
-                "image_base64": result["image_base64"],
-                "svg": svg_result.get("svg") if svg_result.get("success") else None,
-                "result_path": result_path,
-                "svg_result_path": svg_result_path,
-                "pptx_result_path": pptx_result_path,
-                "steps": steps
-            }
-        else:
-            return {
-                "success": False,
-                "error": result.get("error"),
-                "steps": steps
-            }
+        # 結果画像は背景画像を使用
+        result_image = None
+        result_path = None
+        for elem in generated_elements:
+            if elem.get("type") == "background" and elem.get("image_base64"):
+                result_image = elem["image_base64"]
+                result_path = elem["file_path"]
+                break
+
+        return {
+            "success": pptx_result.get("success", False),
+            "image_base64": result_image,
+            "elements": generated_elements,
+            "result_path": result_path,
+            "pptx_result_path": pptx_result_path,
+            "element_files": pptx_result.get("element_files", []),
+            "steps": steps
+        }
 
     def generate(
         self,
@@ -947,7 +777,7 @@ class DesignerAgent:
                 if nanobanana_result.get("success"):
                     nanobanana_image = nanobanana_result["image_base64"]
                     # 前処理画像を保存
-                    nanobanana_path = save_parse_image(nanobanana_image, self.session_id)
+                    nanobanana_path = save_nanobanana_image(nanobanana_image, self.session_id)
                     steps.append(f"Nanobanana前処理画像を生成: {nanobanana_path}")
                     print(f"  前処理画像を生成: {nanobanana_path}")
                 else:
@@ -962,8 +792,9 @@ class DesignerAgent:
                     research_preview = web_research['research'][:200] + "..." if len(web_research['research']) > 200 else web_research['research']
                     print(f"  検索結果: {research_preview}")
                     steps.append("Webリサーチ完了")
-                    if web_research.get("grounding", {}).get("sources"):
-                        sources = web_research["grounding"]["sources"]
+                    grounding = web_research.get("grounding")
+                    if grounding and grounding.get("sources"):
+                        sources = grounding["sources"]
                         steps.append(f"  参照ソース: {len(sources)}件")
                 else:
                     print("  → 検索不要と判断")
@@ -1004,9 +835,13 @@ class DesignerAgent:
             design_path = save_design(resolved_design, self.session_id, reasoning, web_research)
             steps.append(f"設計JSONを保存: {design_path}")
 
-            # Phase 2: 実行
+            # Phase 2: 実行（画像分析 → PPTX生成）
             print("\n[Phase 2] 設計を実行中...")
-            result = self._execute_design(resolved_design, input_image=image_base64)
+            result = self._execute_design(
+                resolved_design,
+                input_image=image_base64,
+                nanobanana_image=nanobanana_image
+            )
 
             # ステップをマージ
             all_steps = steps + result.get("steps", [])
@@ -1022,10 +857,10 @@ class DesignerAgent:
                 "steps": all_steps,
                 "nanobanana_image": nanobanana_image,
                 "image_base64": result.get("image_base64"),
-                "svg": result.get("svg"),
+                "elements": result.get("elements"),  # 検出された要素リスト
                 "result_path": result.get("result_path"),
-                "svg_result_path": result.get("svg_result_path"),
                 "pptx_result_path": result.get("pptx_result_path"),
+                "element_files": result.get("element_files"),  # 生成された要素ファイル
                 "response": "\n".join(all_steps)
             }
 
@@ -1113,9 +948,10 @@ class DesignerAgent:
             design_path = save_design(resolved_design, self.session_id, reasoning=None)
             steps.append(f"修正後の設計を保存: {design_path}")
 
-            # 実行
+            # 実行（画像分析 → PPTX生成）
+            # NOTE: refineでは元のnanobanana画像を再利用する必要がある
             print("\n[Refine] 修正後の設計を実行中...")
-            result = self._execute_design(resolved_design)
+            result = self._execute_design(resolved_design, nanobanana_image=None)
 
             all_steps = steps + result.get("steps", [])
 
@@ -1129,10 +965,10 @@ class DesignerAgent:
                 "changes": changes,
                 "steps": all_steps,
                 "image_base64": result.get("image_base64"),
-                "svg": result.get("svg"),
+                "elements": result.get("elements"),
                 "result_path": result.get("result_path"),
-                "svg_result_path": result.get("svg_result_path"),
                 "pptx_result_path": result.get("pptx_result_path"),
+                "element_files": result.get("element_files"),
                 "response": "\n".join(all_steps)
             }
 
