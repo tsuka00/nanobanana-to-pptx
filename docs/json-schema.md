@@ -14,10 +14,26 @@ Designer Agent が生成する設計JSONの仕様です。
 | SVG | 編集可能なベクター形式 | Illustratorで編集可能 |
 | PPTX | PowerPointプレゼンテーション | テキスト編集可能 |
 
+## プリセットシステム
+
+v2.0から、**プリセットシステム**が導入されました。座標や色を細かく指定する代わりに、プリセット名を指定することで一貫性のあるデザインを簡単に生成できます。
+
+### プリセットの利点
+
+- **簡潔な指定**: 座標や色を省略しても適切な値が自動設定される
+- **一貫性**: トーンに合ったレイアウト・配色の組み合わせが保証される
+- **LLMの負担軽減**: AIが細かい数値を考える必要がなくなる
+- **カスタマイズ可能**: 明示的に指定した値はプリセットより優先される
+
 ## スキーマ構造
 
 ```json
 {
+  "preset": {
+    "layout": "string",
+    "palette": "string",
+    "tone": "string"
+  },
   "background": {
     "prompt": "string"
   },
@@ -76,13 +92,112 @@ Designer Agent が生成する設計JSONの仕様です。
 
 ## 各要素の詳細
 
+### preset（プリセット）
+
+プリセットセクションでは、デザインの基本方針を指定します。**すべてのプロパティは省略可能**です。
+
+| プロパティ | 型 | デフォルト | 説明 |
+|------------|-----|------------|------|
+| layout | string | "center" | レイアウトプリセット名 |
+| palette | string | "light" | 配色パレット名 |
+| tone | string | null | トーンプリセット名 |
+
+#### レイアウトプリセット（layout）
+
+| 値 | タイトル位置 | サブタイトル位置 | 説明 |
+|----|-------------|------------------|------|
+| center | (960, 400) | (960, 520) | 中央配置（デフォルト） |
+| center-middle | (960, 480) | (960, 600) | 中央・垂直中央（インパクト重視） |
+| left | (200, 400) | (200, 520) | 左寄せ（右に余白） |
+| right | (1720, 400) | (1720, 520) | 右寄せ（左に余白） |
+| bottom | (960, 800) | (960, 920) | 下部配置（背景重視） |
+| top | (960, 200) | (960, 320) | 上部配置 |
+| split-left | (480, 450) | (480, 580) | 左半分にテキスト（50:50分割） |
+| split-right | (1440, 450) | (1440, 580) | 右半分にテキスト（50:50分割） |
+| bottom-left | (200, 800) | (200, 920) | 左下配置 |
+| bottom-right | (1720, 800) | (1720, 920) | 右下配置 |
+| overlay | (960, 480) | (960, 620) | オーバーレイ（背景画像の上） |
+
+#### 配色パレット（palette）
+
+| 値 | 背景色 | テキスト色 | アクセント色 | 用途 |
+|----|--------|-----------|-------------|------|
+| light | #ffffff | #1a1a1a | #2196F3 | 明るい、ビジネス |
+| light-warm | #faf8f5 | #3d3d3d | #ff9800 | 温かみ |
+| light-cool | #f5f9fc | #1a3a5c | #00bcd4 | クール |
+| dark | #1a1a1a | #ffffff | #00bcd4 | モダン |
+| dark-tech | #0a0a0a | #ffffff | #00ffff | テック、サイバー |
+| dark-purple | #1a0a2e | #ffffff | #e040fb | クリエイティブ |
+| monochrome | #f5f5f5 | #000000 | #000000 | ミニマル |
+| monochrome-dark | #121212 | #ffffff | #ffffff | ダークミニマル |
+| premium-gold | #1a1a1a | #ffffff | #ffd700 | 高級感・ゴールド |
+| premium-silver | #1a1a2e | #ffffff | #e8e8e8 | 高級感・シルバー |
+| vibrant | #ffffff | #1a1a1a | #ff4081 | エネルギッシュ |
+| vibrant-gradient | #667eea | #ffffff | #f093fb | グラデーション背景 |
+| nature | #f5f5dc | #2e4a2e | #4caf50 | 自然・エコ |
+| ocean | #e3f2fd | #0d47a1 | #00bcd4 | 海・青系 |
+| corporate | #f8f9fa | #212529 | #0056b3 | 企業向け |
+| corporate-dark | #1e2a3a | #ffffff | #3182ce | 企業向けダーク |
+
+#### トーンプリセット（tone）
+
+| 値 | 説明 | 推奨レイアウト | 推奨パレット |
+|----|------|---------------|-------------|
+| professional | ビジネス、信頼感 | center, left | corporate, light |
+| creative | アーティスティック | left, right | vibrant, dark-purple |
+| tech | 未来的、先進的 | center, split-left | dark-tech, dark |
+| premium | 高級、ラグジュアリー | center, center-middle | premium-gold, premium-silver |
+| minimal | シンプル、余白重視 | center, center-middle | monochrome, light |
+| energetic | 活発、ダイナミック | left, right | vibrant, vibrant-gradient |
+| warm | 温かみ、親しみ | center, left | light-warm, nature |
+| cool | クール、知的 | center, split-left | light-cool, ocean |
+| nature | 自然、オーガニック | center, bottom | nature, ocean |
+| playful | 遊び心、楽しさ | left, bottom-left | vibrant, light-warm |
+
+**例（プリセット使用）**:
+
+```json
+{
+  "preset": {
+    "tone": "tech",
+    "layout": "center",
+    "palette": "dark-tech"
+  },
+  "title": {
+    "text": "AI革命",
+    "fontSize": 100,
+    "style": "3d-metallic"
+  },
+  "subtitle": {
+    "text": "未来を創る技術"
+  }
+}
+```
+
+この例では、タイトルとサブタイトルの座標（x, y）と色（color）は省略されています。プリセット解決後、以下の値が自動設定されます：
+- タイトル座標: (960, 400) ← `center` レイアウトから
+- サブタイトル座標: (960, 520) ← `center` レイアウトから
+- タイトル色: #ffffff ← `dark-tech` パレットの text_primary
+- サブタイトル色: #888888 ← `dark-tech` パレットの text_secondary
+
+---
+
 ### background（背景）
 
 | プロパティ | 型 | 必須 | 説明 |
 |------------|-----|------|------|
-| prompt | string | 必須 | 背景画像生成プロンプト |
+| prompt | string | 任意 | 背景画像生成プロンプト（省略時はパレットのヒントを使用） |
 
-**例**:
+**プリセットとの連携**: `prompt` を省略すると、選択したパレットに応じた背景が自動生成されます。
+
+| パレット | 自動生成される背景のヒント |
+|----------|---------------------------|
+| dark-tech | "dark futuristic background, subtle grid or particles, tech atmosphere" |
+| premium-gold | "elegant dark background with subtle gold accents, luxury" |
+| nature | "natural, organic background, soft green tones, earthy" |
+| ... | パレットごとに最適化されたヒント |
+
+**例（明示的に指定）**:
 
 ```json
 {
@@ -91,6 +206,16 @@ Designer Agent が生成する設計JSONの仕様です。
   }
 }
 ```
+
+**例（プリセットから自動生成）**:
+
+```json
+{
+  "preset": { "palette": "dark-tech" },
+  "background": {}
+}
+```
+→ "dark futuristic background, subtle grid or particles, tech atmosphere, cyber aesthetic" が自動設定される
 
 ---
 
@@ -180,15 +305,21 @@ Designer Agent が生成する設計JSONの仕様です。
 | プロパティ | 型 | 必須 | デフォルト | 説明 |
 |------------|-----|------|------------|------|
 | text | string | 必須 | - | タイトルテキスト |
-| x | number | 任意 | 960 | X座標（テキスト中心） |
-| y | number | 任意 | 400 | Y座標（テキスト中心） |
+| x | number | 任意 | レイアウトから | X座標（テキスト中心） |
+| y | number | 任意 | レイアウトから | Y座標（テキスト中心） |
 | fontSize | number | 任意 | 64 | フォントサイズ |
 | fontFamily | string | 任意 | "Hiragino Sans" | フォントファミリー |
-| fontWeight | string | 任意 | "bold" | フォントの太さ |
-| style | string | 任意 | "flat" | スタイルプリセット |
-| color | string | 任意 | "#ffffff" | 文字色（flat/outline/emboss用） |
+| fontWeight | string | 任意 | トーンから | フォントの太さ |
+| style | string | 任意 | パレットから | スタイルプリセット |
+| color | string | 任意 | パレットから | 文字色（flat/outline/emboss用） |
 | glowColor | string | 任意 | null | グロー色（neon-glow用） |
 | fill | object | 任意 | null | グラデーション設定 |
+
+**プリセットとの連携**:
+- `x`, `y` 省略時: 選択したレイアウトの `title_x`, `title_y` が使用される
+- `color` 省略時: 選択したパレットの `text_primary` が使用される
+- `style` 省略時: 選択したパレットの推奨スタイル（最初のもの）が使用される
+- `fontWeight` 省略時: 選択したトーンの `font_weight_title` が使用される
 
 **スタイルプリセット（style）**:
 
@@ -283,15 +414,20 @@ Designer Agent が生成する設計JSONの仕様です。
 | プロパティ | 型 | 必須 | デフォルト | 説明 |
 |------------|-----|------|------------|------|
 | text | string | 必須 | - | サブタイトルテキスト |
-| x | number | 任意 | 960 | X座標（テキスト中心） |
-| y | number | 任意 | 500 | Y座標（テキスト中心） |
+| x | number | 任意 | レイアウトから | X座標（テキスト中心） |
+| y | number | 任意 | レイアウトから | Y座標（テキスト中心） |
 | fontSize | number | 任意 | 36 | フォントサイズ |
 | fontFamily | string | 任意 | "Hiragino Sans" | フォントファミリー |
-| fontWeight | string | 任意 | "normal" | フォントの太さ |
+| fontWeight | string | 任意 | トーンから | フォントの太さ |
 | style | string | 任意 | "flat" | スタイルプリセット |
-| color | string | 任意 | "#ffffff" | 文字色 |
+| color | string | 任意 | パレットから | 文字色 |
 | glowColor | string | 任意 | null | グロー色（neon-glow用） |
 | fill | object | 任意 | null | グラデーション設定 |
+
+**プリセットとの連携**:
+- `x`, `y` 省略時: 選択したレイアウトの `subtitle_x`, `subtitle_y` が使用される
+- `color` 省略時: 選択したパレットの `text_secondary` が使用される
+- `fontWeight` 省略時: 選択したトーンの `font_weight_subtitle` が使用される
 
 **例**:
 

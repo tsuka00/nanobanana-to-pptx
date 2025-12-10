@@ -42,6 +42,10 @@ from .tools.compose_slide_svg import compose_slide_svg as _compose_slide_svg
 from .tools.svg_to_pptx import svg_to_pptx as _svg_to_pptx
 from .tools.svg_to_pptx import svg_to_pptx_editable as _svg_to_pptx_editable
 
+# プリセットシステム
+from .presets import get_preset_summary, LAYOUTS, PALETTES, TONES
+from .preset_resolver import resolve_presets, get_prompt_for_preset_selection
+
 # .env.local を読み込み
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env.local'))
 
@@ -68,27 +72,41 @@ REASONING_PROMPT = """あなたは優秀なビジュアルデザイナーです�
    - 誰に向けたデザインか？
    - フォーマルか、カジュアルか？
 
-3. **雰囲気・トーン**
-   - どんなムードが適切か？（モダン、温かい、力強い、シンプル、華やか等）
-   - 色のトーンは？（暖色系、寒色系、モノトーン等）
+3. **トーンの選択**（以下から1つ選択）
+   - `professional`: プロフェッショナル、ビジネス、信頼感
+   - `creative`: クリエイティブ、アーティスティック、独創的
+   - `tech`: テクノロジー、未来的、先進的
+   - `premium`: 高級、ラグジュアリー、洗練
+   - `minimal`: ミニマル、シンプル、余白重視
+   - `energetic`: エネルギッシュ、活発、ダイナミック
+   - `warm`: 温かみ、親しみやすさ、柔らかさ
+   - `cool`: クール、洗練、知的
+   - `nature`: 自然、オーガニック、サステナブル
+   - `playful`: 遊び心、楽しさ、カジュアル
 
-4. **レイアウトの検討**
-   - テキストの配置はどこが効果的か？
-   - 視線の流れをどう設計するか？
-   - 余白のバランスは？
+4. **レイアウトの検討**（以下から1つ選択）
+   - `center`: 中央配置（デフォルト、バランス重視）
+   - `center-middle`: 中央・垂直中央（インパクト重視）
+   - `left`: 左寄せ（右に余白、動きのある印象）
+   - `right`: 右寄せ（左に余白）
+   - `bottom`: 下部配置（背景重視）
+   - `top`: 上部配置（安定感）
+   - `split-left`: 左半分にテキスト（50:50分割）
+   - `split-right`: 右半分にテキスト（50:50分割）
+   - `bottom-left`: 左下配置
+   - `bottom-right`: 右下配置
+   - `overlay`: オーバーレイ（背景画像の上）
 
-5. **ビジュアル要素**
-   - 背景はどんなイメージが合うか？
-   - 装飾的なシェイプは必要か？どんな形・色？
-   - コントラストは十分か？
+5. **配色パレットの選択**（以下から1つ選択）
+   - ライト系: `light`, `light-warm`, `light-cool`
+   - ダーク系: `dark`, `dark-tech`, `dark-purple`
+   - モノクローム: `monochrome`, `monochrome-dark`
+   - プレミアム: `premium-gold`, `premium-silver`
+   - ビビッド: `vibrant`, `vibrant-gradient`
+   - 自然系: `nature`, `ocean`
+   - ビジネス: `corporate`, `corporate-dark`
 
-6. **テキストスタイル**
-   - タイトルのフォントは？（ゴシック系、明朝系、丸ゴシック等）
-   - タイトルの色は？（単色、グラデーション）
-   - フォントの太さは？（normal、bold、light）
-   - サブタイトルとのバランスは？
-
-7. **テキストエフェクト**（以下のプリセットから選択）
+6. **テキストスタイル**（以下から選択）
    - flat: シンプルな単色（ビジネス、フォーマル向け）
    - shadow: ドロップシャドウ付き（可読性重視）
    - **3d-metallic: ホログラム/メタリック/3D風（★推奨：立体感、光沢、虹色反射が必要な場合はこれを使う）**
@@ -98,17 +116,15 @@ REASONING_PROMPT = """あなたは優秀なビジュアルデザイナーです�
    - gold: ゴールドメタリック（高級感、祝い事）
    - silver: シルバーメタリック（クール、先進的）
    - emboss: エンボス/浮き彫り（伝統的、重厚感）
-   - gradient: 単純な2色グラデーション（3d-metallicほどリッチではない）
+   - gradient: 単純な2色グラデーション
 
    **重要**: ホログラム、メタリック、チューブ形状、立体的な表現が求められる場合は必ず `3d-metallic` を選択。
-   `gradient`は単純な色変化のみで立体感はない。
 
-8. **複数の選択肢**
-   - アプローチA: ...
-   - アプローチB: ...
-   - 推奨: ...とその理由
+7. **推奨アプローチ**
+   - 選んだトーン、レイアウト、パレットを明記
+   - なぜその組み合わせが最適かの理由
 
-思考過程を詳しく出力してください。最後に「推奨アプローチ」を明記してください。
+思考過程を詳しく出力してください。最後に「推奨アプローチ」と選んだプリセット（tone, layout, palette）を明記してください。
 """
 
 DESIGN_SYSTEM_PROMPT = """あなたは画像デザインの設計者です。
@@ -120,15 +136,20 @@ JSONのみを出力し、他のテキストは含めないでください。
 ## JSON形式
 
 {
+  "preset": {
+    "layout": "レイアウト名（省略可）",
+    "palette": "パレット名（省略可）",
+    "tone": "トーン名（省略可）"
+  },
   "background": {
-    "prompt": "背景画像の詳細な生成プロンプト（シーン、色調、雰囲気を具体的に）"
+    "prompt": "背景画像の生成プロンプト（省略時はパレットのヒントを使用）"
   },
   "illustration": {
     "type": "polygon | rectangle | ellipse | triangle",
     "points": [[x1, y1], [x2, y2], ...],
     "fill": {
       "type": "solid | gradient",
-      "color": "#色（solidの場合）",
+      "color": "#色（solidの場合、省略時はパレットのアクセント色）",
       "start": "#開始色（gradientの場合）",
       "end": "#終了色（gradientの場合）",
       "direction": "vertical | horizontal | diagonal"
@@ -137,86 +158,132 @@ JSONのみを出力し、他のテキストは含めないでください。
   },
   "title": {
     "text": "タイトル",
-    "x": X座標,
-    "y": Y座標,
+    "x": "X座標（省略時はレイアウトのデフォルト）",
+    "y": "Y座標（省略時はレイアウトのデフォルト）",
     "fontSize": サイズ,
     "fontFamily": "フォント名",
-    "fontWeight": "normal | bold | light",
-    "style": "flat | shadow | 3d-metallic | neon-glow | glass | outline | gold | silver | emboss | gradient",
-    "color": "#色（flat/outline/emboss用）",
+    "fontWeight": "normal | bold | light（省略時はトーンのデフォルト）",
+    "style": "flat | shadow | 3d-metallic | neon-glow | glass | outline | gold | silver | emboss | gradient（省略時はパレットの推奨スタイル）",
+    "color": "#色（省略時はパレットのtext_primary）",
     "glowColor": "#色（neon-glow用、オプション）",
     "fill": {
       "type": "gradient",
-      "start": "#開始色",
-      "end": "#終了色",
+      "start": "#開始色（省略時はパレットのアクセント色）",
+      "end": "#終了色（省略時はパレットのtext_primary）",
       "direction": "vertical | horizontal | diagonal"
     }
   },
   "subtitle": {
     "text": "サブタイトル",
-    "x": X座標,
-    "y": Y座標,
+    "x": "X座標（省略時はレイアウトのデフォルト）",
+    "y": "Y座標（省略時はレイアウトのデフォルト）",
     "fontSize": サイズ,
     "fontFamily": "フォント名",
-    "fontWeight": "normal | bold | light",
-    "style": "flat | shadow | 3d-metallic | neon-glow | glass | outline | gold | silver | emboss | gradient",
-    "color": "#色（flat/outline/emboss用）",
-    "glowColor": "#色（neon-glow用、オプション）",
-    "fill": {
-      "type": "gradient",
-      "start": "#開始色",
-      "end": "#終了色",
-      "direction": "vertical | horizontal | diagonal"
-    }
+    "fontWeight": "normal | bold | light（省略時はトーンのデフォルト）",
+    "style": "flat | shadow | ... （省略時はflat）",
+    "color": "#色（省略時はパレットのtext_secondary）"
   }
 }
 
+## プリセットシステム
+
+### レイアウトプリセット（preset.layout）
+| 名前 | 説明 | タイトル位置 |
+|------|------|------------|
+| center | 中央配置（デフォルト） | (960, 400) |
+| center-middle | 中央・垂直中央 | (960, 480) |
+| left | 左寄せ | (200, 400) |
+| right | 右寄せ | (1720, 400) |
+| bottom | 下部配置 | (960, 800) |
+| top | 上部配置 | (960, 200) |
+| split-left | 左半分（50:50分割） | (480, 450) |
+| split-right | 右半分（50:50分割） | (1440, 450) |
+| bottom-left | 左下配置 | (200, 800) |
+| bottom-right | 右下配置 | (1720, 800) |
+| overlay | オーバーレイ | (960, 480) |
+
+### 配色パレット（preset.palette）
+| 名前 | 背景 | 用途 |
+|------|------|------|
+| light | #ffffff | 明るい、ビジネス |
+| light-warm | #faf8f5 | 温かみ |
+| light-cool | #f5f9fc | クール |
+| dark | #1a1a1a | モダン |
+| dark-tech | #0a0a0a | テック、サイバー |
+| dark-purple | #1a0a2e | クリエイティブ |
+| monochrome | #f5f5f5 | ミニマル |
+| monochrome-dark | #121212 | ダークミニマル |
+| premium-gold | #1a1a1a | 高級感・ゴールド |
+| premium-silver | #1a1a2e | 高級感・シルバー |
+| vibrant | #ffffff | エネルギッシュ |
+| vibrant-gradient | #667eea | グラデーション背景 |
+| nature | #f5f5dc | 自然・エコ |
+| ocean | #e3f2fd | 海・青系 |
+| corporate | #f8f9fa | 企業向け |
+| corporate-dark | #1e2a3a | 企業向けダーク |
+
+### トーンプリセット（preset.tone）
+| 名前 | 説明 | 推奨パレット |
+|------|------|------------|
+| professional | ビジネス、信頼感 | corporate, light |
+| creative | アーティスティック | vibrant, dark-purple |
+| tech | 未来的、先進的 | dark-tech, dark |
+| premium | 高級、ラグジュアリー | premium-gold, premium-silver |
+| minimal | シンプル、余白重視 | monochrome, light |
+| energetic | 活発、ダイナミック | vibrant, vibrant-gradient |
+| warm | 温かみ、親しみ | light-warm, nature |
+| cool | クール、知的 | light-cool, ocean |
+| nature | 自然、オーガニック | nature, ocean |
+| playful | 遊び心、楽しさ | vibrant, light-warm |
+
 ## ルール
 
-- Reasoningで推奨されたアプローチに従う
+- Reasoningで推奨されたプリセット（tone, layout, palette）をpresetセクションに指定
+- **座標や色は省略可能** - プリセットから自動解決される
+- 明示的に指定した値はプリセットより優先される
 - ユーザーが指示していない要素は null にする
-- 背景のpromptは具体的に（色、雰囲気、質感、光の方向なども含める）
-- テキストと背景のコントラストを確保する
-- illustrationは単一のオブジェクトとして返す（配列ではなく、1つのシェイプのみ）
-- 複数の装飾が必要な場合は、背景promptに含めるか、illustrationで代表的な1つを選ぶ
+- 背景のpromptは省略可能（パレットのヒントから生成）
+- illustrationは単一のオブジェクトとして返す
 
-## スタイル選択ガイド（重要）
+## スタイル選択ガイド
 
 | ユーザーの要望 | 選ぶべきstyle |
 |--------------|--------------|
-| ホログラム、メタリック、3D、立体、チューブ形状、光沢 | **3d-metallic** |
+| ホログラム、メタリック、3D、立体 | **3d-metallic** |
 | 発光、ネオン、サイバー | neon-glow |
 | 高級感、ゴールド | gold |
 | クール、シルバー | silver |
-| 単純な色変化のみ | gradient |
 | シンプル、ビジネス | flat |
 
-**注意**: 「ホログラム」「メタリック」「立体的」などの指示がある場合、`gradient`ではなく必ず`3d-metallic`を選択すること。
+## プリセット活用の例
 
-## レイアウトのバリエーション
+### 例1: テック系プレゼン
+```json
+{
+  "preset": { "tone": "tech", "layout": "center", "palette": "dark-tech" },
+  "title": { "text": "AI革命", "fontSize": 100, "style": "3d-metallic" },
+  "subtitle": { "text": "未来を創る技術" }
+}
+```
+→ 座標・色はプリセットから自動解決
 
-単調にならないよう、状況に応じて多様なレイアウトを検討:
+### 例2: 高級感のある告知
+```json
+{
+  "preset": { "tone": "premium", "layout": "center-middle", "palette": "premium-gold" },
+  "title": { "text": "GRAND OPENING", "fontSize": 120, "style": "gold" },
+  "subtitle": { "text": "特別なひとときを" }
+}
+```
 
-- **中央配置**: タイトル中央、バランス重視
-- **左寄せ**: タイトル左側、右に余白→動きのある印象
-- **右寄せ**: タイトル右側、左にシェイプ
-- **上部配置**: タイトル上部、下に余白→安定感
-- **下部配置**: タイトル下部→インパクト
-- **斜め配置**: シェイプで斜めのラインを作る→動的
-
-## シェイプの活用
-
-- 必須ではない。デザインに必要な場合のみ使用
-- 視線誘導や区切りとして効果的に配置
-- 背景とのコントラストを考慮
-
-## 座標参考（1920x1080）
-
-| 位置 | x | y |
-|------|-----|-----|
-| 中央 | 960 | 540 |
-| 左上 | 200 | 200 |
-| 右下 | 1720 | 880 |
+### 例3: カジュアルなイベント
+```json
+{
+  "preset": { "tone": "playful", "layout": "left", "palette": "vibrant" },
+  "title": { "text": "夏祭り開催！", "fontSize": 80 },
+  "subtitle": { "text": "8月15日 みんなで楽しもう" }
+}
+```
 
 ## フォントファミリー
 
@@ -227,15 +294,6 @@ JSONのみを出力し、他のテキストは含めないでください。
 | Hiragino Maru Gothic | 親しみやすい、カジュアル |
 | Helvetica Neue | 欧文、モダン |
 | Arial | 欧文、汎用 |
-
-## テキストスタイルの指針
-
-- **単色（solid）**: シンプルで読みやすい。背景とのコントラストを確保
-- **グラデーション（gradient）**: インパクトが必要な場合。背景がシンプルな時に効果的
-- **fontWeight**:
-  - bold: 強調したい時（タイトル向き）
-  - normal: バランス重視
-  - light: 繊細、エレガントな印象
 """
 
 # 修正フェーズ用プロンプト
@@ -806,15 +864,24 @@ class DesignerAgent:
                 input_image=image_base64,
                 nanobanana_image=nanobanana_image
             )
-            print(f"  設計JSON: {json.dumps(design, ensure_ascii=False, indent=2)}")
+            print(f"  設計JSON（プリセット解決前）: {json.dumps(design, ensure_ascii=False, indent=2)}")
 
-            # 設計JSONを保存
-            design_path = save_design(design, self.session_id, reasoning)
+            # Phase 1c: プリセット解決
+            print("\n[Phase 1c] プリセット解決中...")
+            preset_info = design.get("preset", {})
+            if preset_info:
+                print(f"  プリセット: layout={preset_info.get('layout')}, palette={preset_info.get('palette')}, tone={preset_info.get('tone')}")
+            resolved_design = resolve_presets(design)
+            print(f"  設計JSON（プリセット解決後）: {json.dumps(resolved_design, ensure_ascii=False, indent=2)}")
+            steps.append(f"プリセット解決完了: layout={preset_info.get('layout', 'center')}, palette={preset_info.get('palette', 'light')}, tone={preset_info.get('tone', '-')}")
+
+            # 設計JSONを保存（解決後のデザインを保存）
+            design_path = save_design(resolved_design, self.session_id, reasoning)
             steps.append(f"設計JSONを保存: {design_path}")
 
             # Phase 2: 実行
             print("\n[Phase 2] 設計を実行中...")
-            result = self._execute_design(design, input_image=image_base64)
+            result = self._execute_design(resolved_design, input_image=image_base64)
 
             # ステップをマージ
             all_steps = steps + result.get("steps", [])
@@ -822,7 +889,9 @@ class DesignerAgent:
             return {
                 "success": result.get("success", False),
                 "session_id": self.session_id,
-                "design": design,
+                "design": resolved_design,
+                "design_raw": design,  # プリセット解決前の生のJSON
+                "preset": preset_info,
                 "reasoning": reasoning,
                 "steps": all_steps,
                 "nanobanana_image": nanobanana_image,
@@ -899,21 +968,28 @@ class DesignerAgent:
                 }
 
             new_design = json.loads(json_match.group())
-            print(f"  修正後の設計: {json.dumps(new_design, ensure_ascii=False, indent=2)}")
+            print(f"  修正後の設計（プリセット解決前）: {json.dumps(new_design, ensure_ascii=False, indent=2)}")
+
+            # プリセット解決
+            preset_info = new_design.get("preset", {})
+            if preset_info:
+                print(f"  プリセット: layout={preset_info.get('layout')}, palette={preset_info.get('palette')}, tone={preset_info.get('tone')}")
+            resolved_design = resolve_presets(new_design)
+            print(f"  修正後の設計（プリセット解決後）: {json.dumps(resolved_design, ensure_ascii=False, indent=2)}")
 
             # 変更された要素を特定
-            changes = self._detect_changes(current_design, new_design)
+            changes = self._detect_changes(current_design, resolved_design)
             print(f"  変更された要素: {changes}")
             steps.append(f"変更を検出: {', '.join(changes) if changes else 'なし'}")
 
             # 新しいセッションIDで保存（修正版）
             self.session_id = self._generate_session_id()
-            design_path = save_design(new_design, self.session_id, reasoning=None)
+            design_path = save_design(resolved_design, self.session_id, reasoning=None)
             steps.append(f"修正後の設計を保存: {design_path}")
 
             # 実行
             print("\n[Refine] 修正後の設計を実行中...")
-            result = self._execute_design(new_design)
+            result = self._execute_design(resolved_design)
 
             all_steps = steps + result.get("steps", [])
 
@@ -921,7 +997,9 @@ class DesignerAgent:
                 "success": result.get("success", False),
                 "session_id": self.session_id,
                 "previous_session_id": target_session,
-                "design": new_design,
+                "design": resolved_design,
+                "design_raw": new_design,
+                "preset": preset_info,
                 "changes": changes,
                 "steps": all_steps,
                 "image_base64": result.get("image_base64"),
