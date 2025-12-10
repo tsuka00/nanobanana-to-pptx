@@ -6,12 +6,13 @@ Designer Agent が生成する設計JSONの仕様です。
 
 ユーザーの自然言語指示は Gemini 2.0 Flash によって以下の構造化JSONに変換されます。
 
-同じ設計JSONから PNG と SVG の両方が生成されます：
+同じ設計JSONから PNG、SVG、PPTX の3形式が生成されます：
 
-| 出力形式 | 用途 |
-|----------|------|
-| PNG | 最終合成画像（プレビュー用） |
-| SVG | 編集可能なベクター形式（Illustratorで編集可能） |
+| 出力形式 | 用途 | 編集 |
+|----------|------|------|
+| PNG | 最終合成画像（プレビュー用） | 不可 |
+| SVG | 編集可能なベクター形式 | Illustratorで編集可能 |
+| PPTX | PowerPointプレゼンテーション | テキスト編集可能 |
 
 ## スキーマ構造
 
@@ -41,14 +42,34 @@ Designer Agent が生成する設計JSONの仕様です。
     "x": number,
     "y": number,
     "fontSize": number,
-    "color": "string"
+    "fontFamily": "string",
+    "fontWeight": "string",
+    "style": "string",
+    "color": "string",
+    "glowColor": "string",
+    "fill": {
+      "type": "string",
+      "start": "string",
+      "end": "string",
+      "direction": "string"
+    }
   },
   "subtitle": {
     "text": "string",
     "x": number,
     "y": number,
     "fontSize": number,
-    "color": "string"
+    "fontFamily": "string",
+    "fontWeight": "string",
+    "style": "string",
+    "color": "string",
+    "glowColor": "string",
+    "fill": {
+      "type": "string",
+      "start": "string",
+      "end": "string",
+      "direction": "string"
+    }
   }
 }
 ```
@@ -162,9 +183,47 @@ Designer Agent が生成する設計JSONの仕様です。
 | x | number | 任意 | 960 | X座標（テキスト中心） |
 | y | number | 任意 | 400 | Y座標（テキスト中心） |
 | fontSize | number | 任意 | 64 | フォントサイズ |
-| color | string | 任意 | "#ffffff" | 文字色 |
+| fontFamily | string | 任意 | "Hiragino Sans" | フォントファミリー |
+| fontWeight | string | 任意 | "bold" | フォントの太さ |
+| style | string | 任意 | "flat" | スタイルプリセット |
+| color | string | 任意 | "#ffffff" | 文字色（flat/outline/emboss用） |
+| glowColor | string | 任意 | null | グロー色（neon-glow用） |
+| fill | object | 任意 | null | グラデーション設定 |
 
-**例**:
+**スタイルプリセット（style）**:
+
+| 値 | 説明 | 推奨用途 |
+|----|------|----------|
+| flat | シンプルな単色 | ビジネス、フォーマル |
+| shadow | ドロップシャドウ | 可読性重視 |
+| 3d-metallic | 3D/メタリック/ホログラム | 立体感、光沢、虹色反射 |
+| neon-glow | ネオン発光 | テクノロジー、エンタメ |
+| glass | ガラス風透明感 | 洗練、クリーン |
+| outline | アウトライン | カジュアル、ポップ |
+| gold | ゴールドメタリック | 高級感、祝い事 |
+| silver | シルバーメタリック | クール、先進的 |
+| emboss | エンボス/浮き彫り | 伝統的、重厚感 |
+| gradient | 2色グラデーション | 単純な色変化 |
+
+**フォントファミリー（fontFamily）**:
+
+| 値 | 説明 |
+|----|------|
+| Hiragino Sans | モダン、クリーン（デフォルト） |
+| Hiragino Mincho | フォーマル、伝統的 |
+| Hiragino Maru Gothic | 親しみやすい、カジュアル |
+| Helvetica Neue | 欧文、モダン |
+| Arial | 欧文、汎用 |
+
+**フォントの太さ（fontWeight）**:
+
+| 値 | 説明 |
+|----|------|
+| bold | 太字（強調） |
+| normal | 通常 |
+| light | 細字（繊細、エレガント） |
+
+**例（シンプル）**:
 
 ```json
 {
@@ -173,7 +232,46 @@ Designer Agent が生成する設計JSONの仕様です。
     "x": 960,
     "y": 400,
     "fontSize": 72,
+    "style": "flat",
     "color": "#ffffff"
+  }
+}
+```
+
+**例（3Dメタリック + グラデーション）**:
+
+```json
+{
+  "title": {
+    "text": "CADC",
+    "x": 960,
+    "y": 400,
+    "fontSize": 200,
+    "fontFamily": "Helvetica Neue",
+    "fontWeight": "bold",
+    "style": "3d-metallic",
+    "fill": {
+      "type": "gradient",
+      "start": "#00FF00",
+      "end": "#00FFFF",
+      "direction": "diagonal"
+    }
+  }
+}
+```
+
+**例（ネオングロー）**:
+
+```json
+{
+  "title": {
+    "text": "NEON",
+    "x": 960,
+    "y": 400,
+    "fontSize": 120,
+    "style": "neon-glow",
+    "color": "#00FFFF",
+    "glowColor": "#00FFFF"
   }
 }
 ```
@@ -188,7 +286,12 @@ Designer Agent が生成する設計JSONの仕様です。
 | x | number | 任意 | 960 | X座標（テキスト中心） |
 | y | number | 任意 | 500 | Y座標（テキスト中心） |
 | fontSize | number | 任意 | 36 | フォントサイズ |
+| fontFamily | string | 任意 | "Hiragino Sans" | フォントファミリー |
+| fontWeight | string | 任意 | "normal" | フォントの太さ |
+| style | string | 任意 | "flat" | スタイルプリセット |
 | color | string | 任意 | "#ffffff" | 文字色 |
+| glowColor | string | 任意 | null | グロー色（neon-glow用） |
+| fill | object | 任意 | null | グラデーション設定 |
 
 **例**:
 
@@ -199,7 +302,23 @@ Designer Agent が生成する設計JSONの仕様です。
     "x": 960,
     "y": 500,
     "fontSize": 36,
+    "style": "flat",
     "color": "#cccccc"
+  }
+}
+```
+
+**例（複数行）**:
+
+```json
+{
+  "subtitle": {
+    "text": "CyberAgent Developer Conference 2024\n10.29 Tue - 10.30 Wed",
+    "x": 960,
+    "y": 650,
+    "fontSize": 40,
+    "style": "flat",
+    "color": "#FFFFFF"
   }
 }
 ```
@@ -278,7 +397,7 @@ Designer Agent が生成する設計JSONの仕様です。
 
 | 用途 | サイズ |
 |------|--------|
-| メインタイトル | 64〜80 |
+| メインタイトル | 64〜200 |
 | サブタイトル | 36〜48 |
 | キャプション | 24〜32 |
 
@@ -341,13 +460,22 @@ Designer Agent が生成する設計JSONの仕様です。
     "x": 1200,
     "y": 450,
     "fontSize": 72,
-    "color": "#ffffff"
+    "fontFamily": "Hiragino Sans",
+    "fontWeight": "bold",
+    "style": "3d-metallic",
+    "fill": {
+      "type": "gradient",
+      "start": "#FFD700",
+      "end": "#FFA500",
+      "direction": "vertical"
+    }
   },
   "subtitle": {
     "text": "2025年度 年次報告",
     "x": 1200,
     "y": 550,
     "fontSize": 36,
+    "style": "flat",
     "color": "#e0e0e0"
   }
 }
@@ -356,7 +484,7 @@ Designer Agent が生成する設計JSONの仕様です。
 この設計JSONは以下のスライドを生成します：
 - 青〜紫のグラデーション背景
 - 左下に斜めの水色シェイプ
-- 右側に白文字のタイトル
+- 右側に3Dメタリックスタイルのタイトル（ゴールドグラデーション）
 - タイトル下にライトグレーのサブタイトル
 
 ---
@@ -376,6 +504,7 @@ Designer Agent が生成する設計JSONの仕様です。
     "x": 960,
     "y": 540,
     "fontSize": 80,
+    "style": "flat",
     "color": "#333333"
   },
   "subtitle": null
@@ -386,36 +515,24 @@ Designer Agent が生成する設計JSONの仕様です。
 
 ---
 
-## SVG出力時の注意事項
+## 出力形式別の注意事項
 
-設計JSONは PNG と SVG の両方に使用されますが、SVG出力には以下の特性があります：
+### SVG出力
 
-### フォント
+- フォントは `Hiragino Sans` を使用（Illustrator互換）
+- 背景画像はそのままSVG内に埋め込み（品質劣化なし）
+- テキストスタイルプリセットが完全に適用される
+- 各要素はレイヤーとして分離（`id` 属性で識別）
 
-SVG出力では `Hiragino Sans` フォントを使用します（Illustrator互換）。設計JSONで指定されたフォントサイズと色はそのまま適用されます。
+### PPTX出力
 
-### 背景画像
+- テキストはネイティブテキストボックスとして配置（**編集可能**）
+- スタイルプリセットは適用されない（シンプルなテキスト）
+- 色・フォントサイズ・フォントファミリーは反映される
+- 背景・イラストは画像として配置
 
-背景画像（Gemini生成）はそのままSVG内に埋め込まれます：
-- 品質劣化なし（元画像をそのまま保持）
-- 変更が必要な場合は再生成で対応
-- テキストやシェイプは編集可能なまま
+### PNG出力
 
-### イラスト（シェイプ）
-
-イラストはネイティブSVG要素として出力されます：
-- polygon → `<polygon>` 要素
-- rectangle → `<rect>` 要素
-- ellipse → `<ellipse>` 要素
-- gradient → `<linearGradient>` 定義
-
-### レイヤー構造
-
-合成SVGは以下のレイヤー構造を持ちます（id属性で識別）：
-
-1. `background` - 背景レイヤー
-2. `illustration` - イラストレイヤー
-3. `title` - タイトルレイヤー
-4. `subtitle` - サブタイトルレイヤー
-
-Adobe Illustrator で開くと、各レイヤーを個別に選択・編集できます。
+- すべての要素がラスタライズされる
+- スタイルプリセットはPillow描画では反映されない（単色のみ）
+- 最終的な見た目の確認用

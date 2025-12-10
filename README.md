@@ -8,17 +8,18 @@
 
 - **背景（Background）**: Gemini による画像生成
 - **イラスト（Illustration）**: 幾何学シェイプ描画（SVG / Pillow）
-- **タイトル（Title）**: テキスト描画（SVG / Pillow）
-- **サブタイトル（Subtitle）**: テキスト描画（SVG / Pillow）
+- **タイトル（Title）**: テキスト描画（10種類のスタイルプリセット対応）
+- **サブタイトル（Subtitle）**: テキスト描画（10種類のスタイルプリセット対応）
 
 ## 出力形式
 
-PNG画像とSVGの両方を出力します：
+3つの形式で出力します：
 
-- **PNG出力**: 最終合成画像（編集不可）
-- **SVG出力**: 編集可能なベクター形式（Adobe Illustrator対応）
-
-SVG出力により、AI生成後もIllustratorで個別要素の編集が可能です。
+| 形式 | 用途 | 編集 |
+|------|------|------|
+| **PNG** | 最終合成画像（プレビュー用） | 不可 |
+| **SVG** | 編集可能なベクター形式 | Adobe Illustrator対応 |
+| **PPTX** | PowerPointプレゼンテーション | テキスト編集可能 |
 
 ## 動作モード
 
@@ -101,9 +102,29 @@ output_svg/             # SVGファイル
   title/                # タイトルSVG（編集可能）
   subtitle/             # サブタイトルSVG（編集可能）
   result/               # 最終合成SVG
+
+output_pptx/            # PowerPointファイル
+  result/               # 最終PPTX（テキスト編集可能）
 ```
 
-各ファイルはセッションID（例: `SYV4-1867.png`、`SYV4-1867.svg`）で管理されます。
+各ファイルはセッションID（例: `SYV4-1867.png`）で管理されます。
+
+## テキストスタイルプリセット
+
+タイトル・サブタイトルに適用可能な10種類のスタイル：
+
+| スタイル | 説明 | 推奨用途 |
+|----------|------|----------|
+| `flat` | シンプルな単色 | ビジネス、フォーマル |
+| `shadow` | ドロップシャドウ | 可読性重視 |
+| `3d-metallic` | ホログラム/メタリック/3D風 | 立体感、光沢、虹色反射 |
+| `neon-glow` | ネオン発光 | テクノロジー、エンタメ |
+| `glass` | ガラス風透明感 | 洗練、クリーン |
+| `outline` | アウトライン | カジュアル、ポップ |
+| `gold` | ゴールドメタリック | 高級感、祝い事 |
+| `silver` | シルバーメタリック | クール、先進的 |
+| `emboss` | エンボス/浮き彫り | 伝統的、重厚感 |
+| `gradient` | 2色グラデーション | 単純な色変化 |
 
 ## ドキュメント
 
@@ -112,6 +133,7 @@ output_svg/             # SVGファイル
 - [システム概要](docs/overview.md) - アーキテクチャと処理フロー
 - [ツール一覧](docs/tools.md) - 各ツールの詳細仕様
 - [JSONスキーマ](docs/json-schema.md) - 設計JSONの仕様
+- [PPTX出力](docs/pptx-export.md) - PowerPoint出力の詳細
 
 ## ディレクトリ構成
 
@@ -132,11 +154,15 @@ nanobanana-to-pptx/
       # SVG生成ツール
       image_to_svg.py         # 画像→SVG埋め込み
       draw_illustration_svg.py # イラストSVG生成
-      text_to_title_svg.py    # タイトルSVG生成
-      text_to_subtitle_svg.py # サブタイトルSVG生成
+      text_to_title_svg.py    # タイトルSVG生成（スタイルプリセット対応）
+      text_to_subtitle_svg.py # サブタイトルSVG生成（スタイルプリセット対応）
       compose_slide_svg.py    # SVG合成（Illustrator対応）
+      svg_text_styles.py      # SVGスタイルプリセット定義
+      # PPTX生成ツール
+      svg_to_pptx.py          # PPTX出力（編集可能版）
   output/                # PNG画像の出力先
   output_svg/            # SVGファイルの出力先
+  output_pptx/           # PPTXファイルの出力先
   docs/                  # ドキュメント
 ```
 
@@ -146,6 +172,8 @@ nanobanana-to-pptx/
 - **Google Gemini API**: 画像生成（gemini-2.5-flash-image）、設計解析（gemini-2.0-flash）
 - **Pillow**: テキスト描画、シェイプ描画、画像合成（PNG）
 - **SVG**: 編集可能なベクター出力（テキスト・シェイプ）
+- **python-pptx**: PowerPoint出力（テキスト編集可能）
+- **cairosvg**: SVG→PNG変換
 
 ## ライセンス
 

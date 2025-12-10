@@ -353,7 +353,7 @@ result = text_to_title._tool_func(
 
 ### text_to_title_svg
 
-タイトルテキストをSVGとして生成します。
+タイトルテキストをSVGとして生成します（スタイルプリセット対応）。
 
 **ファイル**: `agents/tools/text_to_title_svg.py`
 
@@ -365,8 +365,27 @@ result = text_to_title._tool_func(
 | x | int | 任意 | 960 | X座標（テキスト中心） |
 | y | int | 任意 | 400 | Y座標（テキスト中心） |
 | font_size | int | 任意 | 64 | フォントサイズ |
-| color | str | 任意 | "#ffffff" | 文字色 |
 | font_family | str | 任意 | "Hiragino Sans" | フォントファミリー |
+| font_weight | str | 任意 | "bold" | フォントの太さ |
+| color | str | 任意 | "#ffffff" | 文字色 |
+| style | str | 任意 | "flat" | スタイルプリセット名 |
+| fill | dict/str | 任意 | None | グラデーション設定 |
+| glow_color | str | 任意 | None | グロー色（neon-glow用） |
+
+**スタイルプリセット**:
+
+| スタイル | 説明 | 特徴 |
+|----------|------|------|
+| `flat` | シンプルな単色 | 軽量 |
+| `shadow` | ドロップシャドウ | 可読性向上 |
+| `3d-metallic` | 3D/メタリック/ホログラム | 立体感、光沢、虹色反射 |
+| `neon-glow` | ネオン発光 | 複数レイヤーのグロー |
+| `glass` | ガラス風 | 透明感 |
+| `outline` | アウトライン | ストロークのみ |
+| `gold` | ゴールド | 金色グラデーション |
+| `silver` | シルバー | 銀色グラデーション |
+| `emboss` | エンボス | 浮き彫り |
+| `gradient` | グラデーション | 2色グラデーション |
 
 **戻り値**:
 
@@ -377,16 +396,32 @@ result = text_to_title._tool_func(
 }
 ```
 
-**仕様**:
-- SVG text 要素として出力
-- フォント: Hiragino Sans（Illustrator互換）
-- text-anchor: middle（中央揃え）
+**使用例**:
+
+```python
+from agents.tools import text_to_title_svg
+
+# 3Dメタリックスタイル
+result = text_to_title_svg._tool_func(
+    text="TITLE",
+    x=960,
+    y=400,
+    font_size=100,
+    style="3d-metallic",
+    fill={
+        "type": "gradient",
+        "start": "#00FF00",
+        "end": "#00FFFF",
+        "direction": "diagonal"
+    }
+)
+```
 
 ---
 
 ### text_to_subtitle_svg
 
-サブタイトルテキストをSVGとして生成します。
+サブタイトルテキストをSVGとして生成します（スタイルプリセット対応）。
 
 **ファイル**: `agents/tools/text_to_subtitle_svg.py`
 
@@ -398,17 +433,16 @@ result = text_to_title._tool_func(
 | x | int | 任意 | 960 | X座標（テキスト中心） |
 | y | int | 任意 | 500 | Y座標（テキスト中心） |
 | font_size | int | 任意 | 36 | フォントサイズ |
-| color | str | 任意 | "#ffffff" | 文字色 |
 | font_family | str | 任意 | "Hiragino Sans" | フォントファミリー |
+| font_weight | str | 任意 | "normal" | フォントの太さ |
+| color | str | 任意 | "#ffffff" | 文字色 |
+| style | str | 任意 | "flat" | スタイルプリセット名 |
+| fill | dict/str | 任意 | None | グラデーション設定 |
+| glow_color | str | 任意 | None | グロー色（neon-glow用） |
 
-**戻り値**:
-
-```json
-{
-  "success": true,
-  "svg": "<svg>...</svg>"
-}
-```
+**仕様**:
+- `text_to_title_svg` と同じスタイルプリセットに対応
+- デフォルトのフォントサイズ、Y座標、font_weightが異なる
 
 ---
 
@@ -477,13 +511,123 @@ result = text_to_title._tool_func(
 
 ---
 
+## PPTXツール
+
+### svg_to_pptx
+
+SVGをPowerPointプレゼンテーションに変換します（画像として埋め込み）。
+
+**ファイル**: `agents/tools/svg_to_pptx.py`
+
+**引数**:
+
+| 引数名 | 型 | 必須 | デフォルト | 説明 |
+|--------|-----|------|------------|------|
+| svg | str | 必須 | - | SVG文字列 |
+| session_id | str | 必須 | - | セッションID（ファイル名） |
+| folder | str | 任意 | "result" | 保存先フォルダ名 |
+
+**戻り値**:
+
+```json
+{
+  "success": true,
+  "file_path": "/path/to/output_pptx/result/SESSION_ID.pptx"
+}
+```
+
+**仕様**:
+- SVGをPNGにレンダリング後、画像としてスライドに配置
+- 編集不可（1枚の画像として配置）
+- スライドサイズ: 1920x1080（16:9）
+
+---
+
+### svg_to_pptx_editable
+
+個別の要素からPowerPointプレゼンテーションを生成します（テキスト編集可能）。
+
+**ファイル**: `agents/tools/svg_to_pptx.py`
+
+**引数**:
+
+| 引数名 | 型 | 必須 | デフォルト | 説明 |
+|--------|-----|------|------------|------|
+| session_id | str | 必須 | - | セッションID（ファイル名） |
+| folder | str | 任意 | "result" | 保存先フォルダ名 |
+| background_base64 | str | 任意 | None | 背景画像のBase64 |
+| illustration_base64 | str | 任意 | None | イラスト画像のBase64 |
+| title_config | dict | 任意 | None | タイトル設定 |
+| subtitle_config | dict | 任意 | None | サブタイトル設定 |
+
+**title_config / subtitle_config の形式**:
+
+```json
+{
+  "text": "テキスト",
+  "x": 960,
+  "y": 400,
+  "fontSize": 64,
+  "fontFamily": "Arial",
+  "fontWeight": "bold",
+  "color": "#FFFFFF"
+}
+```
+
+**戻り値**:
+
+```json
+{
+  "success": true,
+  "file_path": "/path/to/output_pptx/result/SESSION_ID.pptx"
+}
+```
+
+**仕様**:
+- 背景・イラスト: 画像として配置（移動・リサイズ可能）
+- タイトル・サブタイトル: ネイティブテキストボックスとして配置（**編集可能**）
+- スライドサイズ: 1920x1080（16:9）
+- テキストは中央揃え
+
+**使用例**:
+
+```python
+from agents.tools import svg_to_pptx_editable
+
+result = svg_to_pptx_editable._tool_func(
+    session_id="TEST-0001",
+    folder="result",
+    background_base64=bg_base64,
+    title_config={
+        "text": "タイトル",
+        "x": 960,
+        "y": 400,
+        "fontSize": 100,
+        "fontFamily": "Arial",
+        "fontWeight": "bold",
+        "color": "#FFFFFF"
+    },
+    subtitle_config={
+        "text": "サブタイトル\n2行目",
+        "x": 960,
+        "y": 600,
+        "fontSize": 48,
+        "fontFamily": "Arial",
+        "fontWeight": "normal",
+        "color": "#CCCCCC"
+    }
+)
+```
+
+---
+
 ## 互換性ツール（レガシー）
 
 以下のツールは互換性のために残されています：
 
 | ツール名 | 説明 |
 |----------|------|
-| text_to_image | 汎用画像生成 |
+| text_to_image | 汎用画像生成（Nanobanana前処理用） |
 | image_to_image | 汎用画像編集 |
 | text_to_illustration | イラスト生成（旧） |
 | image_to_illustration | イラスト編集（旧） |

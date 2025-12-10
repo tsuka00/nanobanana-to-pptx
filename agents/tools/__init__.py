@@ -23,6 +23,9 @@ from .text_to_subtitle_svg import text_to_subtitle_svg
 from .draw_illustration_svg import draw_illustration_svg
 from .compose_slide_svg import compose_slide_svg
 
+# PPTXツール
+from .svg_to_pptx import svg_to_pptx, svg_to_pptx_editable
+
 # 既存ツール（互換性のため残す）
 from .text_to_image import text_to_image
 from .image_to_image import image_to_image
@@ -47,6 +50,9 @@ __all__ = [
     "text_to_subtitle_svg",
     "draw_illustration_svg",
     "compose_slide_svg",
+    # PPTXツール
+    "svg_to_pptx",
+    "svg_to_pptx_editable",
     # 既存ツール
     "text_to_image",
     "image_to_image",

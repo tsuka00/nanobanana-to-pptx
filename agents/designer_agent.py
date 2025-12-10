@@ -38,6 +38,10 @@ from .tools.text_to_subtitle_svg import text_to_subtitle_svg as _text_to_subtitl
 from .tools.draw_illustration_svg import draw_illustration_svg as _draw_illustration_svg
 from .tools.compose_slide_svg import compose_slide_svg as _compose_slide_svg
 
+# PPTXツール
+from .tools.svg_to_pptx import svg_to_pptx as _svg_to_pptx
+from .tools.svg_to_pptx import svg_to_pptx_editable as _svg_to_pptx_editable
+
 # .env.local を読み込み
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env.local'))
 
@@ -655,6 +659,69 @@ class DesignerAgent:
             print(f"  [Error] SVG合成失敗: {svg_result.get('error')}")
             steps.append(f"SVG合成に失敗: {svg_result.get('error')}")
 
+        # 7. PPTX生成（編集可能版）
+        pptx_result_path = None
+        print("  [Step 7] PPTX生成中（編集可能）...")
+
+        # タイトル・サブタイトルの設定を取得
+        title = design.get("title")
+        subtitle = design.get("subtitle")
+
+        title_config = None
+        if title and title.get("text"):
+            # fillからcolorを取得（後方互換性）
+            title_color = title.get("color", "#FFFFFF")
+            title_fill = title.get("fill")
+            if isinstance(title_fill, str):
+                title_color = title_fill
+            elif isinstance(title_fill, dict):
+                title_color = title_fill.get("color", title_fill.get("start", title_color))
+
+            title_config = {
+                "text": title["text"],
+                "x": title.get("x", 960),
+                "y": title.get("y", 400),
+                "fontSize": title.get("fontSize", 64),
+                "fontFamily": title.get("fontFamily", "Arial"),
+                "fontWeight": title.get("fontWeight", "bold"),
+                "color": title_color
+            }
+
+        subtitle_config = None
+        if subtitle and subtitle.get("text"):
+            # fillからcolorを取得（後方互換性）
+            subtitle_color = subtitle.get("color", "#FFFFFF")
+            subtitle_fill = subtitle.get("fill")
+            if isinstance(subtitle_fill, str):
+                subtitle_color = subtitle_fill
+            elif isinstance(subtitle_fill, dict):
+                subtitle_color = subtitle_fill.get("color", subtitle_fill.get("start", subtitle_color))
+
+            subtitle_config = {
+                "text": subtitle["text"],
+                "x": subtitle.get("x", 960),
+                "y": subtitle.get("y", 500),
+                "fontSize": subtitle.get("fontSize", 36),
+                "fontFamily": subtitle.get("fontFamily", "Arial"),
+                "fontWeight": subtitle.get("fontWeight", "normal"),
+                "color": subtitle_color
+            }
+
+        pptx_result = _svg_to_pptx_editable._tool_func(
+            session_id=self.session_id,
+            folder="result",
+            background_base64=elements.get("background"),
+            illustration_base64=elements.get("illustration"),
+            title_config=title_config,
+            subtitle_config=subtitle_config
+        )
+        if pptx_result.get("success"):
+            pptx_result_path = pptx_result["file_path"]
+            steps.append(f"PPTX生成完了（編集可能）: {pptx_result_path}")
+        else:
+            print(f"  [Error] PPTX生成失敗: {pptx_result.get('error')}")
+            steps.append(f"PPTX生成に失敗: {pptx_result.get('error')}")
+
         if result.get("success"):
             return {
                 "success": True,
@@ -662,6 +729,7 @@ class DesignerAgent:
                 "svg": svg_result.get("svg") if svg_result.get("success") else None,
                 "result_path": result_path,
                 "svg_result_path": svg_result_path,
+                "pptx_result_path": pptx_result_path,
                 "steps": steps
             }
         else:
@@ -762,6 +830,7 @@ class DesignerAgent:
                 "svg": result.get("svg"),
                 "result_path": result.get("result_path"),
                 "svg_result_path": result.get("svg_result_path"),
+                "pptx_result_path": result.get("pptx_result_path"),
                 "response": "\n".join(all_steps)
             }
 
@@ -859,6 +928,7 @@ class DesignerAgent:
                 "svg": result.get("svg"),
                 "result_path": result.get("result_path"),
                 "svg_result_path": result.get("svg_result_path"),
+                "pptx_result_path": result.get("pptx_result_path"),
                 "response": "\n".join(all_steps)
             }
 

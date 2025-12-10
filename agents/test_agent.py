@@ -91,7 +91,11 @@ def main():
         print(result.get('response', ''))
 
         if result.get('result_path'):
-            print(f"\n最終結果: {result.get('result_path')}")
+            print(f"\n最終結果（PNG）: {result.get('result_path')}")
+        if result.get('svg_result_path'):
+            print(f"最終結果（SVG）: {result.get('svg_result_path')}")
+        if result.get('pptx_result_path'):
+            print(f"最終結果（PPTX）: {result.get('pptx_result_path')}")
     else:
         print(f"Error: {result.get('error')}")
         if result.get('traceback'):
