@@ -12,7 +12,7 @@ from google import genai  # type: ignore
 from google.genai import types
 from PIL import Image
 
-MODEL = "gemini-2.5-flash-image"
+MODEL = "gemini-3-pro-image-preview"
 
 
 def get_client():

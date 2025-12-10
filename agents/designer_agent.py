@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Optional, List
 from dotenv import load_dotenv
 from google import genai  # type: ignore
+from google.genai.types import GenerateContentConfig, GoogleSearch, Tool
 from PIL import Image
 
 # Nanobanana 画像生成（前処理）
@@ -56,7 +57,7 @@ OUTPUT_PARSE_IMAGE_DIR = Path(__file__).parent.parent / "output_parse_image"
 OUTPUT_DESIGN_DIR = Path(__file__).parent.parent / "output_design"
 
 # 設計フェーズ用のモデル
-DESIGN_MODEL = "gemini-2.0-flash"
+DESIGN_MODEL = "gemini-3-pro-preview"
 
 # Reasoning フェーズ用プロンプト
 REASONING_PROMPT = """あなたは優秀なビジュアルデザイナーです。
@@ -125,6 +126,29 @@ REASONING_PROMPT = """あなたは優秀なビジュアルデザイナーです�
    - なぜその組み合わせが最適かの理由
 
 思考過程を詳しく出力してください。最後に「推奨アプローチ」と選んだプリセット（tone, layout, palette）を明記してください。
+"""
+
+# Web Research フェーズ用プロンプト
+WEB_RESEARCH_PROMPT = """あなたはデザインリサーチャーです。
+ユーザーの指示を分析し、より良いデザインを作成するために必要な情報をWeb検索してください。
+
+## 検索すべき情報（必要に応じて）
+1. **デザイントレンド**: 関連する最新のデザイントレンド、配色トレンド
+2. **参考事例**: 類似のプレゼンテーションやスライドデザインの事例
+3. **業界スタイル**: 特定の業界（テック、金融、教育等）のデザイン慣習
+
+## 指示
+- 検索が不要と判断した場合は「検索不要」と返答してください
+- 検索した場合は、得られた情報を以下の形式でまとめてください：
+
+### 検索結果
+- **トレンド**: ...
+- **推奨配色**: ...
+- **参考スタイル**: ...
+- **注意点**: ...
+
+## ユーザーの指示
+{user_prompt}
 """
 
 DESIGN_SYSTEM_PROMPT = """あなたは画像デザインの設計者です。
@@ -328,16 +352,22 @@ def save_image(image_base64: str, folder: str, session_id: str) -> str:
     return str(output_path)
 
 
-def save_design(design: dict, session_id: str, reasoning: Optional[str] = None) -> str:
+def save_design(
+    design: dict,
+    session_id: str,
+    reasoning: Optional[str] = None,
+    web_research: Optional[dict] = None
+) -> str:
     """設計JSONを保存してパスを返す"""
     output_path = OUTPUT_DESIGN_DIR / f"{session_id}.json"
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # 設計JSONとreasoningをまとめて保存
+    # 設計JSON、reasoning、web_researchをまとめて保存
     data = {
         "session_id": session_id,
         "design": design,
-        "reasoning": reasoning
+        "reasoning": reasoning,
+        "web_research": web_research
     }
 
     with open(output_path, 'w', encoding='utf-8') as f:
@@ -402,11 +432,78 @@ class DesignerAgent:
         image_bytes = base64.b64decode(image_base64)
         return Image.open(io.BytesIO(image_bytes))
 
+    def _web_research(
+        self,
+        user_prompt: str,
+        input_image: Optional[str] = None
+    ) -> Optional[dict]:
+        """
+        Web検索でデザイン参考情報を収集（エージェントが自律判断）
+
+        Args:
+            user_prompt: ユーザーの自然言語指示
+            input_image: 参照画像のBase64（オプション）
+
+        Returns:
+            dict | None: 検索結果（検索不要の場合はNone）
+                - research: 検索結果のテキスト
+                - grounding: メタデータ（検索クエリ、ソースURL等）
+        """
+        try:
+            contents: List = []
+
+            prompt = WEB_RESEARCH_PROMPT.format(user_prompt=user_prompt)
+            contents.append(prompt)
+
+            # 参照画像がある場合は追加
+            if input_image:
+                contents.append(self._base64_to_pil(input_image))
+
+            # Google Search ツールを有効化
+            config = GenerateContentConfig(
+                tools=[Tool(google_search=GoogleSearch())]
+            )
+
+            response = self.client.models.generate_content(
+                model=DESIGN_MODEL,
+                contents=contents,
+                config=config
+            )
+
+            result_text = response.text
+
+            # 検索不要の場合
+            if "検索不要" in result_text:
+                return None
+
+            # グラウンディングメタデータを抽出
+            grounding_metadata = None
+            if response.candidates and response.candidates[0].grounding_metadata:
+                metadata = response.candidates[0].grounding_metadata
+                grounding_metadata = {
+                    "search_queries": list(metadata.web_search_queries) if metadata.web_search_queries else [],
+                    "sources": [
+                        {"uri": chunk.web.uri, "title": chunk.web.title}
+                        for chunk in (metadata.grounding_chunks or [])
+                        if chunk.web
+                    ]
+                }
+
+            return {
+                "research": result_text,
+                "grounding": grounding_metadata
+            }
+
+        except Exception as e:
+            print(f"  [Warning] Web Research failed: {str(e)}")
+            return None
+
     def _reason(
         self,
         user_prompt: str,
         input_image: Optional[str] = None,
-        nanobanana_image: Optional[str] = None
+        nanobanana_image: Optional[str] = None,
+        web_research: Optional[dict] = None
     ) -> str:
         """ユーザーのプロンプトを深く分析してデザイン方針を決定
 
@@ -414,6 +511,7 @@ class DesignerAgent:
             user_prompt: ユーザーの自然言語指示
             input_image: ユーザー入力画像のBase64（オプション）
             nanobanana_image: nanobanana前処理で生成した画像のBase64（オプション）
+            web_research: Webリサーチ結果（オプション）
 
         Returns:
             str: 分析結果（reasoning）
@@ -421,6 +519,14 @@ class DesignerAgent:
         contents: List = []
 
         text_prompt = REASONING_PROMPT + "\n\n## ユーザーの指示\n" + user_prompt
+
+        # Web Research 結果を追加
+        if web_research:
+            text_prompt += "\n\n## Webリサーチ結果\n" + web_research["research"]
+            if web_research.get("grounding", {}).get("sources"):
+                text_prompt += "\n\n### 参照ソース:\n"
+                for src in web_research["grounding"]["sources"][:5]:
+                    text_prompt += f"- [{src['title']}]({src['uri']})\n"
 
         # 画像がある場合は参照情報を追加
         if input_image or nanobanana_image:
@@ -802,7 +908,8 @@ class DesignerAgent:
         user_prompt: str,
         image_base64: Optional[str] = None,
         use_nanobanana: bool = True,
-        use_reasoning: bool = True
+        use_reasoning: bool = True,
+        use_web_research: bool = True
     ) -> dict:
         """
         ユーザーの指示から画像を生成
@@ -813,6 +920,7 @@ class DesignerAgent:
                           指定すると image-to-image モードで動作
             use_nanobanana: nanobanana前処理を使用するか（デフォルト: True）
             use_reasoning: reasoningフェーズを使用するか（デフォルト: True）
+            use_web_research: webリサーチを使用するか（デフォルト: True）
 
         Returns:
             dict: 生成結果
@@ -821,6 +929,7 @@ class DesignerAgent:
             steps = []
             nanobanana_image: Optional[str] = None
             reasoning: Optional[str] = None
+            web_research: Optional[dict] = None
 
             # Phase 0: Nanobanana 前処理
             if use_nanobanana:
@@ -845,13 +954,29 @@ class DesignerAgent:
                     print(f"  [Warning] Nanobanana前処理に失敗: {nanobanana_result.get('error')}")
                     steps.append(f"Nanobanana前処理に失敗（続行）: {nanobanana_result.get('error')}")
 
+            # Phase 0.5: Web Research（エージェントが自律判断）
+            if use_web_research:
+                print("\n[Phase 0.5] Web Research...")
+                web_research = self._web_research(user_prompt, input_image=image_base64)
+                if web_research:
+                    research_preview = web_research['research'][:200] + "..." if len(web_research['research']) > 200 else web_research['research']
+                    print(f"  検索結果: {research_preview}")
+                    steps.append("Webリサーチ完了")
+                    if web_research.get("grounding", {}).get("sources"):
+                        sources = web_research["grounding"]["sources"]
+                        steps.append(f"  参照ソース: {len(sources)}件")
+                else:
+                    print("  → 検索不要と判断")
+                    steps.append("Webリサーチ: 不要と判断")
+
             # Phase 1a: Reasoning（デザイン分析）
             if use_reasoning:
                 print("\n[Phase 1a] デザイン分析（Reasoning）...")
                 reasoning = self._reason(
                     user_prompt,
                     input_image=image_base64,
-                    nanobanana_image=nanobanana_image
+                    nanobanana_image=nanobanana_image,
+                    web_research=web_research
                 )
                 print(f"  分析結果:\n{reasoning[:500]}..." if len(reasoning) > 500 else f"  分析結果:\n{reasoning}")
                 steps.append("デザイン分析完了")
@@ -876,7 +1001,7 @@ class DesignerAgent:
             steps.append(f"プリセット解決完了: layout={preset_info.get('layout', 'center')}, palette={preset_info.get('palette', 'light')}, tone={preset_info.get('tone', '-')}")
 
             # 設計JSONを保存（解決後のデザインを保存）
-            design_path = save_design(resolved_design, self.session_id, reasoning)
+            design_path = save_design(resolved_design, self.session_id, reasoning, web_research)
             steps.append(f"設計JSONを保存: {design_path}")
 
             # Phase 2: 実行
@@ -893,6 +1018,7 @@ class DesignerAgent:
                 "design_raw": design,  # プリセット解決前の生のJSON
                 "preset": preset_info,
                 "reasoning": reasoning,
+                "web_research": web_research,
                 "steps": all_steps,
                 "nanobanana_image": nanobanana_image,
                 "image_base64": result.get("image_base64"),

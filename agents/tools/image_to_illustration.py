@@ -14,7 +14,7 @@ from rembg import remove, new_session
 REMBG_SESSION = new_session("u2net", providers=["CPUExecutionProvider"])
 from PIL import Image
 
-MODEL = "gemini-2.5-flash-image"
+MODEL = "gemini-3-pro-image-preview"
 
 
 def get_client():

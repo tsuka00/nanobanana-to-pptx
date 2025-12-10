@@ -10,7 +10,7 @@ from strands import tool
 from google import genai
 from PIL import Image
 
-MODEL = "gemini-2.5-flash-image"
+MODEL = "gemini-3-pro-image-preview"
 
 
 def get_client():

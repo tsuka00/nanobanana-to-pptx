@@ -9,7 +9,7 @@ from strands import tool
 from google import genai
 from google.genai import types
 
-MODEL = "gemini-2.5-flash-image"
+MODEL = "gemini-3-pro-image-preview"
 
 
 def get_client():
