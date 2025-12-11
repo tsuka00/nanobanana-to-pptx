@@ -24,6 +24,11 @@ from .tools.design_references import search_references, get_reference_image
 # プリセット
 from .preset_resolver import resolve_presets
 
+# トレーシング
+import sys
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from langfuse.tracing import AgentTracer, estimate_tokens
+
 # .env.local を読み込み
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env.local'))
 
@@ -210,7 +215,12 @@ JSONのみを出力してください。
 class ReActDesignerAgent:
     """ReAct方式で動作するデザイナーエージェント"""
 
-    def __init__(self, api_key: Optional[str] = None, session_id: Optional[str] = None):
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        session_id: Optional[str] = None,
+        enable_tracing: bool = True
+    ):
         self.api_key = api_key or os.environ.get("GOOGLE_API_KEY") or ""
         if not self.api_key:
             raise ValueError("GOOGLE_API_KEY is required")
@@ -222,6 +232,12 @@ class ReActDesignerAgent:
 
         # 参照画像（スタイル参考用）
         self.reference_image_base64: Optional[str] = None
+
+        # トレーシング
+        self.tracer = AgentTracer(
+            session_id=self.session_id,
+            enabled=enable_tracing
+        )
 
     def _generate_session_id(self) -> str:
         import random
@@ -287,22 +303,38 @@ class ReActDesignerAgent:
         """ツールを実行して結果を返す"""
         print(f"    [Tool] {action}")
 
-        if action == "web_search":
-            return self._tool_web_search(action_input)
-        elif action == "reference_search":
-            return self._tool_reference_search(action_input)
-        elif action == "design":
-            return self._tool_design(action_input)
-        elif action == "generate":
-            return self._tool_generate(action_input)
-        elif action == "ask_feedback":
-            return self._tool_ask_feedback(action_input)
-        elif action == "regenerate_background":
-            return self._tool_regenerate_background(action_input)
-        elif action == "update_text":
-            return self._tool_update_text(action_input)
-        else:
-            return f"Error: Unknown tool '{action}'"
+        # スパン開始
+        span_id = self.tracer.start_span(
+            name=f"tool_{action}",
+            span_type="tool",
+            input_data={"action": action, "input": action_input}
+        )
+
+        result = ""
+        try:
+            if action == "web_search":
+                result = self._tool_web_search(action_input)
+            elif action == "reference_search":
+                result = self._tool_reference_search(action_input)
+            elif action == "design":
+                result = self._tool_design(action_input)
+            elif action == "generate":
+                result = self._tool_generate(action_input)
+            elif action == "ask_feedback":
+                result = self._tool_ask_feedback(action_input)
+            elif action == "regenerate_background":
+                result = self._tool_regenerate_background(action_input)
+            elif action == "update_text":
+                result = self._tool_update_text(action_input)
+            else:
+                result = f"Error: Unknown tool '{action}'"
+        except Exception as e:
+            result = f"Error: {str(e)}"
+        finally:
+            # スパン終了
+            self.tracer.end_span(span_id, output_data=result[:500])
+
+        return result
 
     def _tool_web_search(self, params: Dict[str, Any]) -> str:
         """Web検索ツール"""
@@ -770,6 +802,12 @@ class ReActDesignerAgent:
         self._current_design = None
         self._result = None
 
+        # トレース開始
+        self.tracer.start_trace(
+            name="ReActDesignerAgent",
+            input_data={"user_prompt": user_prompt, "has_reference": reference_image_base64 is not None}
+        )
+
         # 初期プロンプト
         initial_prompt = f"{REACT_SYSTEM_PROMPT}\n\n## ユーザーの指示\n{user_prompt}"
         if reference_image_base64:
@@ -786,6 +824,17 @@ class ReActDesignerAgent:
         for iteration in range(max_iterations):
             print(f"\n--- Iteration {iteration + 1} ---")
 
+            # LLMスパン開始
+            llm_span_id = self.tracer.start_span(
+                name=f"llm_iteration_{iteration + 1}",
+                span_type="llm",
+                input_data={"iteration": iteration + 1, "history_length": len(self.conversation_history)}
+            )
+
+            # 入力トークン数を推定
+            input_text = "\n".join([msg["content"] for msg in self.conversation_history])
+            input_tokens = estimate_tokens(input_text)
+
             # モデルに問い合わせ
             try:
                 response = self.client.models.generate_content(
@@ -793,12 +842,32 @@ class ReActDesignerAgent:
                     contents=[msg["content"] for msg in self.conversation_history]
                 )
                 response_text = response.text or ""
+
+                # 出力トークン数を推定
+                output_tokens = estimate_tokens(response_text)
+
+                # LLMスパン終了
+                self.tracer.end_span(
+                    llm_span_id,
+                    output_data=response_text[:500],
+                    model=AGENT_MODEL,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens
+                )
+
             except Exception as e:
+                self.tracer.end_span(llm_span_id, output_data=f"Error: {str(e)}")
                 print(f"  [Error] Model call failed: {e}")
+
+                # トレース終了
+                summary = self.tracer.end_trace({"success": False, "error": str(e)})
+                self.tracer.print_summary()
+
                 return {
                     "success": False,
                     "error": str(e),
-                    "session_id": self.session_id
+                    "session_id": self.session_id,
+                    "tracing_summary": summary
                 }
 
             # レスポンスをパース
@@ -810,13 +879,22 @@ class ReActDesignerAgent:
             if parsed["final_answer"]:
                 print(f"  [Final Answer] {parsed['final_answer'][:200]}...")
 
+                # トレース終了
+                summary = self.tracer.end_trace({
+                    "success": True,
+                    "final_answer": parsed["final_answer"][:500],
+                    "iterations": iteration + 1
+                })
+                self.tracer.print_summary()
+
                 return {
                     "success": True,
                     "session_id": self.session_id,
                     "final_answer": parsed["final_answer"],
                     "tools_executed": self.tools_executed,
                     "result": self._result,
-                    "iterations": iteration + 1
+                    "iterations": iteration + 1,
+                    "tracing_summary": summary
                 }
 
             # アクションがない場合
@@ -860,11 +938,19 @@ class ReActDesignerAgent:
             })
 
         # 最大イテレーション到達
+        summary = self.tracer.end_trace({
+            "success": False,
+            "error": "Max iterations reached",
+            "iterations": max_iterations
+        })
+        self.tracer.print_summary()
+
         return {
             "success": False,
             "error": "Max iterations reached",
             "session_id": self.session_id,
-            "tools_executed": self.tools_executed
+            "tools_executed": self.tools_executed,
+            "tracing_summary": summary
         }
 
 
