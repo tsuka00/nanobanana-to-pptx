@@ -134,10 +134,13 @@ WEB_RESEARCH_PROMPT = """あなたはデザインリサーチャーです。
 DESIGN_SYSTEM_PROMPT = """あなたはプロフェッショナルなスライドデザイナーです。
 ユーザーの指示とデザイン分析（Reasoning）に基づいて、高品質なスライド設計JSONを出力してください。
 
-## 重要: 動的elements配列方式
+## 重要な設計思想
 
-必要な要素を自由に追加できます。固定の要素数に縛られません。
-デザインに必要な要素をすべてelements配列に含めてください。
+**シンプルさが正義。要素は最小限に。余白を活かす。**
+
+- 要素は **background（1枚の完成画像）** と **text（編集可能テキスト）** の2種類のみ
+- 人物、イラスト、装飾、アイコンなどは**すべてbackgroundに含める**（1枚絵として生成）
+- 切り抜き感、貼り付け感は絶対NG。一体感のあるデザインを目指す
 
 キャンバスサイズ: 1920x1080 (16:9)
 
@@ -146,103 +149,97 @@ DESIGN_SYSTEM_PROMPT = """あなたはプロフェッショナルなスライド
 ```json
 {
   "meta": {
-    "theme": "テーマ名（tech, business, creative, premium, casual等）",
-    "mood": "雰囲気（energetic, calm, professional, playful等）",
+    "theme": "テーマ名",
+    "mood": "雰囲気",
     "color_scheme": {
-      "primary": "#主要色",
-      "secondary": "#補助色",
-      "accent": "#アクセント色",
-      "background": "#背景色"
+      "primary": "#主要色（テキストのメイン色）",
+      "secondary": "#補助色（サブテキスト等）",
+      "accent": "#アクセント色（強調テキスト等）",
+      "background": "#背景のベース色"
     }
   },
   "elements": [
-    // 必要な要素を自由に追加
+    // background 1つ + text 複数
   ]
 }
 ```
 
 ## 要素タイプ
 
-### 1. background（背景）- 必須、1つのみ
+### 1. background（背景画像）- 必須、1つのみ
+
+人物、イラスト、装飾、グラデーション、すべてを含んだ**完成形の1枚絵**を生成する。
+
 ```json
 {
   "type": "background",
-  "prompt": "背景の詳細な叙述的説明。場面を描写するように書く。",
+  "prompt": "完成形の画像を叙述的に描写。人物や装飾もここに含める。",
   "style": {
-    "lighting": "照明の説明（studio-lit, soft diffused, dramatic等）",
-    "color_tone": "色調（warm, cool, neutral等）",
-    "texture": "質感（smooth gradient, subtle noise, geometric patterns等）"
+    "lighting": "照明",
+    "color_tone": "色調",
+    "texture": "質感"
   }
 }
 ```
 
-### 2. image（生成画像）- 複数可
-```json
-{
-  "type": "image",
-  "id": "一意のID",
-  "prompt": "画像の詳細な叙述的説明",
-  "position": {"x": 0, "y": 0, "width": 400, "height": 400},
-  "style": {
-    "type": "illustration | icon | photo | abstract",
-    "details": "スタイルの詳細説明"
-  }
-}
-```
+**背景プロンプトのポイント**:
+- 人物が必要な場合: 「デュオトーン処理された人物が背景と一体化している」等
+- 装飾が必要な場合: 背景プロンプトに含める（別要素にしない）
+- テキスト領域を考慮: 「左側にテキスト用の余白を残す」等を明記
 
-### 3. text（テキスト）- 複数可
+### 2. text（テキスト）- 複数可
+
+編集可能なテキストボックス。
+
 ```json
 {
   "type": "text",
   "id": "一意のID",
   "content": "表示するテキスト",
-  "position": {"x": 960, "y": 400, "width": 1600, "height": 200},
+  "position": {"x": 100, "y": 400, "width": 800, "height": 150},
   "style": {
-    "fontSize": 80,
+    "fontSize": 72,
     "fontWeight": "bold | normal | light",
-    "fontStyle": "normal | italic",
-    "color": "#FFFFFF",
-    "align": "center | left | right",
-    "verticalAlign": "top | middle | bottom"
+    "color": "#色（meta.color_schemeの色を使う）",
+    "align": "left | center | right"
   }
 }
 ```
 
-## 背景プロンプトの書き方（重要）
+## テキスト色のルール（重要）
 
-キーワード羅列NG。場面を叙述的に描写してください。
+**白一色は禁止。配色パレットを活用すること。**
 
-### 悪い例
-```
-"prompt": "青いグラデーション、テック、モダン"
-```
+- メインタイトル: `primary` または `accent` を使用
+- サブタイトル/説明: `secondary` を使用
+- 強調テキスト: `accent` を使用
+- 日付・補足情報: `secondary` または薄めの色
 
-### 良い例
-```
-"prompt": "A sleek, modern tech background with a deep blue to purple gradient flowing diagonally across the canvas. Subtle geometric shapes float in the background with soft, diffused lighting creating depth. The overall mood is professional and futuristic, with clean lines and minimal visual noise. Studio-quality finish with smooth color transitions."
-```
+例（ダーク背景の場合）:
+- タイトル: primary (#3B82F6) または白
+- サブタイトル: secondary (#94A3B8) ← グレー系
+- 日付: accent (#06B6D4) ← シアン
 
 ## 配色パターン例
 
 | テーマ | primary | secondary | accent | background |
 |--------|---------|-----------|--------|------------|
-| tech-dark | #3B82F6 | #8B5CF6 | #06B6D4 | #0F172A |
-| business | #1E40AF | #3B82F6 | #F59E0B | #F8FAFC |
-| creative | #EC4899 | #8B5CF6 | #F59E0B | #1F2937 |
-| premium | #D4AF37 | #C0C0C0 | #FFD700 | #1A1A1A |
-| nature | #059669 | #10B981 | #FBBF24 | #ECFDF5 |
+| tech-dark | #3B82F6 | #94A3B8 | #06B6D4 | #0F172A |
+| business | #1E40AF | #64748B | #F59E0B | #F8FAFC |
+| creative | #EC4899 | #A1A1AA | #F59E0B | #1F2937 |
+| premium | #D4AF37 | #9CA3AF | #FFD700 | #0D0D0D |
 
 ## デザイン例
 
-### 例1: テック系セミナー告知
+### 例1: 人物入りSNS広告バナー
 ```json
 {
   "meta": {
-    "theme": "tech",
+    "theme": "tech-business",
     "mood": "professional",
     "color_scheme": {
       "primary": "#3B82F6",
-      "secondary": "#8B5CF6",
+      "secondary": "#94A3B8",
       "accent": "#06B6D4",
       "background": "#0F172A"
     }
@@ -250,18 +247,129 @@ DESIGN_SYSTEM_PROMPT = """あなたはプロフェッショナルなスライド
   "elements": [
     {
       "type": "background",
-      "prompt": "A sophisticated dark tech background featuring a smooth gradient from deep navy blue (#0F172A) to rich purple (#1E1B4B). Abstract geometric shapes - hexagons and flowing lines - subtly emerge from the darkness with a soft cyan glow. The lighting is dramatic yet professional, with highlights creating depth. Clean, modern aesthetic suitable for a technology presentation.",
+      "prompt": "A professional SNS advertisement banner with a blue-purple gradient background. On the right side, a confident Asian business professional is depicted in duotone blue style, seamlessly blending with the background gradient. The person has a warm smile and wears smart casual attire. The duotone effect uses deep blue tones matching the background, creating visual unity. The left side has clean space for text with subtle geometric grid patterns. Sophisticated, modern, high-end advertising aesthetic.",
       "style": {
-        "lighting": "dramatic with soft cyan accents",
+        "lighting": "soft studio lighting with blue tint",
+        "color_tone": "cool blue duotone",
+        "texture": "smooth gradient with subtle grid"
+      }
+    },
+    {
+      "type": "text",
+      "id": "headline-1",
+      "content": "日本",
+      "position": {"x": 100, "y": 280, "width": 600, "height": 100},
+      "style": {
+        "fontSize": 72,
+        "fontWeight": "bold",
+        "color": "#FFFFFF",
+        "align": "left"
+      }
+    },
+    {
+      "type": "text",
+      "id": "headline-2",
+      "content": "AIドリブン",
+      "position": {"x": 100, "y": 380, "width": 800, "height": 140},
+      "style": {
+        "fontSize": 96,
+        "fontWeight": "bold",
+        "color": "#3B82F6",
+        "align": "left"
+      }
+    },
+    {
+      "type": "text",
+      "id": "headline-3",
+      "content": "改革",
+      "position": {"x": 100, "y": 520, "width": 600, "height": 120},
+      "style": {
+        "fontSize": 84,
+        "fontWeight": "bold",
+        "color": "#FFFFFF",
+        "align": "left"
+      }
+    },
+    {
+      "type": "text",
+      "id": "speaker-name",
+      "content": "安宅 和人",
+      "position": {"x": 1400, "y": 800, "width": 400, "height": 60},
+      "style": {
+        "fontSize": 36,
+        "fontWeight": "bold",
+        "color": "#FFFFFF",
+        "align": "right"
+      }
+    },
+    {
+      "type": "text",
+      "id": "speaker-title",
+      "content": "慶應義塾大学 教授",
+      "position": {"x": 1400, "y": 860, "width": 400, "height": 40},
+      "style": {
+        "fontSize": 24,
+        "fontWeight": "normal",
+        "color": "#94A3B8",
+        "align": "right"
+      }
+    },
+    {
+      "type": "text",
+      "id": "date",
+      "content": "9.17",
+      "position": {"x": 1500, "y": 100, "width": 300, "height": 120},
+      "style": {
+        "fontSize": 96,
+        "fontWeight": "light",
+        "color": "#FFFFFF",
+        "align": "right"
+      }
+    },
+    {
+      "type": "text",
+      "id": "event-type",
+      "content": "REAL EVENT",
+      "position": {"x": 1500, "y": 220, "width": 300, "height": 50},
+      "style": {
+        "fontSize": 32,
+        "fontWeight": "bold",
+        "color": "#06B6D4",
+        "align": "right"
+      }
+    }
+  ]
+}
+```
+
+### 例2: シンプルなセミナー告知
+```json
+{
+  "meta": {
+    "theme": "tech",
+    "mood": "professional",
+    "color_scheme": {
+      "primary": "#FFFFFF",
+      "secondary": "#94A3B8",
+      "accent": "#06B6D4",
+      "background": "#0F172A"
+    }
+  },
+  "elements": [
+    {
+      "type": "background",
+      "prompt": "A clean, minimal dark tech background with a smooth diagonal gradient from deep navy (#0F172A) to dark purple (#1E1B4B). Very subtle, thin geometric lines create a refined grid pattern in the lower right corner. Plenty of negative space. No clutter. Professional and sophisticated.",
+      "style": {
+        "lighting": "soft ambient",
         "color_tone": "cool, dark",
-        "texture": "smooth gradient with subtle geometric patterns"
+        "texture": "smooth gradient, minimal patterns"
       }
     },
     {
       "type": "text",
       "id": "title",
       "content": "AI時代のエンジニアリング",
-      "position": {"x": 960, "y": 380, "width": 1600, "height": 150},
+      "position": {"x": 960, "y": 400, "width": 1600, "height": 150},
       "style": {
         "fontSize": 72,
         "fontWeight": "bold",
@@ -273,9 +381,9 @@ DESIGN_SYSTEM_PROMPT = """あなたはプロフェッショナルなスライド
       "type": "text",
       "id": "subtitle",
       "content": "最新技術トレンドと実践的アプローチ",
-      "position": {"x": 960, "y": 520, "width": 1400, "height": 80},
+      "position": {"x": 960, "y": 540, "width": 1400, "height": 80},
       "style": {
-        "fontSize": 36,
+        "fontSize": 32,
         "fontWeight": "normal",
         "color": "#94A3B8",
         "align": "center"
@@ -285,74 +393,11 @@ DESIGN_SYSTEM_PROMPT = """あなたはプロフェッショナルなスライド
       "type": "text",
       "id": "date",
       "content": "2025.01.15 | 19:00 - 21:00",
-      "position": {"x": 960, "y": 650, "width": 600, "height": 50},
+      "position": {"x": 960, "y": 680, "width": 600, "height": 50},
       "style": {
         "fontSize": 24,
         "fontWeight": "normal",
         "color": "#06B6D4",
-        "align": "center"
-      }
-    },
-  ]
-}
-```
-
-**重要**: shape要素は使用しない。装飾が必要な場合は背景画像生成時にプロンプトで指定する。
-
-### 例2: 商品プロモーション
-```json
-{
-  "meta": {
-    "theme": "premium",
-    "mood": "luxurious",
-    "color_scheme": {
-      "primary": "#D4AF37",
-      "secondary": "#1A1A1A",
-      "accent": "#FFD700",
-      "background": "#0D0D0D"
-    }
-  },
-  "elements": [
-    {
-      "type": "background",
-      "prompt": "An elegant, luxurious dark background with rich black (#0D0D0D) as the base. Subtle golden light rays emanate from the center, creating a premium feel. Soft bokeh effects in warm gold tones add depth and sophistication. The texture is smooth with a slight metallic sheen, suggesting high-end quality. Professional studio lighting with dramatic shadows.",
-      "style": {
-        "lighting": "dramatic golden accents",
-        "color_tone": "warm, dark, premium",
-        "texture": "smooth with subtle metallic sheen"
-      }
-    },
-    {
-      "type": "image",
-      "id": "product-visual",
-      "prompt": "An abstract golden geometric shape, like a stylized crown or premium emblem, rendered in 3D with metallic gold finish and soft reflections",
-      "position": {"x": 960, "y": 300, "width": 300, "height": 300},
-      "style": {
-        "type": "abstract",
-        "details": "3D metallic gold, premium feel"
-      }
-    },
-    {
-      "type": "text",
-      "id": "brand",
-      "content": "PREMIUM",
-      "position": {"x": 960, "y": 550, "width": 800, "height": 120},
-      "style": {
-        "fontSize": 96,
-        "fontWeight": "bold",
-        "color": "#D4AF37",
-        "align": "center"
-      }
-    },
-    {
-      "type": "text",
-      "id": "tagline",
-      "content": "Exclusive Collection 2025",
-      "position": {"x": 960, "y": 680, "width": 600, "height": 60},
-      "style": {
-        "fontSize": 28,
-        "fontWeight": "light",
-        "color": "#FFFFFF",
         "align": "center"
       }
     }
@@ -362,11 +407,11 @@ DESIGN_SYSTEM_PROMPT = """あなたはプロフェッショナルなスライド
 
 ## ルール
 
-1. **elements配列に必要な要素をすべて含める** - 背景、テキスト、画像、図形を自由に追加
-2. **背景プロンプトは叙述的に** - キーワード羅列ではなく、場面を描写
-3. **位置は具体的に** - x, y, width, heightをピクセルで指定
-4. **配色は統一感を** - meta.color_schemeで定義した色を各要素で使用
-5. **IDは一意に** - 各要素のidは重複しないようにする
+1. **要素はbackgroundとtextのみ** - image, shapeは使用禁止
+2. **人物・イラスト・装飾はbackgroundに含める** - 1枚絵として生成
+3. **テキスト色は配色パレットを活用** - 白一色は避ける
+4. **シンプルに** - 要素を足しすぎない、余白を活かす
+5. **一体感** - 切り抜き感、貼り付け感は絶対NG
 
 JSONのみを出力してください。
 """
@@ -629,13 +674,11 @@ class DesignerAgent:
         return json.loads(json_match.group())
 
     def _execute_design(self, design: dict) -> dict:
-        """設計JSONに基づいて動的に要素を生成し、PPTXに統合
+        """設計JSONに基づいて要素を生成し、PPTXに統合
 
-        新形式: design.elements配列を順に処理
-        - background: 背景画像を生成
-        - image: イラスト/アイコン等を生成
+        要素タイプ:
+        - background: 背景画像を生成（人物・装飾含む完成形）
         - text: テキストボックスとして配置
-        - shape: 図形として配置
 
         Args:
             design: 設計JSON（elements配列を含む）
@@ -658,7 +701,6 @@ class DesignerAgent:
             }
 
         print(f"  処理する要素数: {len(elements)}")
-        image_count = 0
 
         for i, elem in enumerate(elements):
             elem_type = elem.get("type")
@@ -667,7 +709,7 @@ class DesignerAgent:
             print(f"  [{i+1}/{len(elements)}] {elem_type}: {elem_id}")
 
             if elem_type == "background":
-                # 背景画像を生成
+                # 背景画像を生成（人物・装飾含む完成形）
                 prompt = elem.get("prompt", "")
                 style = elem.get("style", {})
 
@@ -694,43 +736,6 @@ class DesignerAgent:
                     else:
                         print(f"      → 生成失敗: {result.get('error')}")
                         steps.append(f"背景生成失敗: {result.get('error')}")
-
-            elif elem_type == "image":
-                # イラスト/アイコン等を生成
-                prompt = elem.get("prompt", "")
-                position = elem.get("position", {})
-                style = elem.get("style", {})
-
-                if prompt:
-                    image_count += 1
-                    style_desc = f"Style: {style.get('type', 'illustration')}. {style.get('details', '')}"
-                    result = generate_image(
-                        prompt=prompt,
-                        style_description=style_desc,
-                        aspect_ratio="1:1",  # イラストは正方形
-                        image_size="1K",
-                        no_text=True
-                    )
-
-                    if result.get("success"):
-                        img_path = save_image(result["image_base64"], f"image_{image_count}", self.session_id)
-                        pptx_elements.append({
-                            "id": elem_id,
-                            "type": "image",
-                            "image_base64": result["image_base64"],
-                            "file_path": img_path,
-                            "bbox": {
-                                "x": position.get("x", 0),
-                                "y": position.get("y", 0),
-                                "width": position.get("width", 400),
-                                "height": position.get("height", 400)
-                            }
-                        })
-                        steps.append(f"画像を生成: {elem_id}")
-                        print(f"      → 生成成功: {img_path}")
-                    else:
-                        print(f"      → 生成失敗: {result.get('error')}")
-                        steps.append(f"画像生成失敗 ({elem_id}): {result.get('error')}")
 
             elif elem_type == "text":
                 # テキスト要素（PPTXでテキストボックスとして配置）
@@ -760,9 +765,9 @@ class DesignerAgent:
                     steps.append(f"テキスト: {content[:30]}...")
                     print(f"      → テキスト追加: {content[:30]}...")
 
-            elif elem_type == "shape":
-                # 図形要素は無視（画像生成で対応）
-                print(f"      → スキップ: shape要素は非対応")
+            else:
+                # 未対応の要素タイプはスキップ
+                print(f"      → スキップ: {elem_type}は非対応")
 
         # PPTX生成
         print(f"  PPTX生成中... ({len(pptx_elements)}要素)")
