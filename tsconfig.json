@@ -1,25 +1,57 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "commonjs",
-    "moduleResolution": "node",
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "ES2022"
+    ],
     "allowJs": true,
     "checkJs": false,
-    "noEmit": true,
-    "strict": false,
     "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
     "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
     "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
     "baseUrl": ".",
     "paths": {
-      "#llm": ["./llm/index.js"],
-      "#llm/*": ["./llm/*/index.js"],
-      "#langfuse": ["./langfuse/index.js"],
-      "#plugin/*": ["./plugin/*/index.js"]
+      "@/*": [
+        "./app/*"
+      ],
+      "@/components/*": [
+        "./app/components/*"
+      ],
+      "#llm": [
+        "./llm/index.js"
+      ],
+      "#llm/*": [
+        "./llm/*/index.js"
+      ],
+      "#langfuse": [
+        "./langfuse/index.js"
+      ],
+      "#plugin/*": [
+        "./plugin/*/index.js"
+      ]
     }
   },
   "include": [
-    "**/*.js"
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    "**/*.js",
+    ".next/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",

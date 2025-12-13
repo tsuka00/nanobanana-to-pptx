@@ -1,0 +1,10 @@
+{
+  "/_global-error/page": "/_global-error",
+  "/_not-found/page": "/_not-found",
+  "/api/agent/route": "/api/agent",
+  "/api/download/route": "/api/download",
+  "/api/edit-element/route": "/api/edit-element",
+  "/api/preview/route": "/api/preview",
+  "/api/regenerate-background/route": "/api/regenerate-background",
+  "/page": "/"
+}
